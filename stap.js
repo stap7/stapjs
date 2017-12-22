@@ -235,6 +235,7 @@ var gui=(function(){
 
 	//////////////////////////////////////////////////////////////////////////////
 	// constants
+	var STAPCSS = "https://cdn.rawgit.com/vdv7/stapjs/fcb7a58e/stap.css";
 	var OPTIONS=new Set([".","S","T","R","onsubedit"]),
 		TYPES=new Set();
 
@@ -1179,7 +1180,7 @@ var gui=(function(){
 		//check and make sure basic stap.css template is loaded
 		var x=document.getElementsByTagName('link');
 		for(var i=0;i<x.length;++i){if(x[i]['href'].endsWith('stap.css'))break;}
-		if(i==x.length){load("lib/stap.css",init);return;}
+		if(i==x.length){load(STAPCSS,init);return;}
 		//create foundational element
 		document.body.parentElement._childmap={};
 		maindiv=addElement(document.body,'object',0,"__main__");
