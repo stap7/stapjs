@@ -235,7 +235,7 @@ var gui=(function(){
 
 	//////////////////////////////////////////////////////////////////////////////
 	// constants
-	var STAPCSS = "https://cdn.rawgit.com/vdv7/stapjs/fcb7a58e/stap.css";
+	var STAPCSS = "https://rawgit.com/vdv7/stapjs/master/stap.css";
 	var OPTIONS=new Set([".","S","T","R","onsubedit"]),
 		TYPES=new Set();
 
