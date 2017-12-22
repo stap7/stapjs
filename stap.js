@@ -716,6 +716,18 @@ var gui=(function(){
 		}
 	}
 
+	function spreadOptionsToChildren(t,optKey){
+		return (optKey in t)?t[optKey]:
+			function(c,v){
+				c._format[optKey]=v;
+				var key,child;
+				for(key in c._childmap){
+					child=c._childmap[key];
+					if(child._options[optKey]===undefined)
+						(setOption[child._type][optKey]||pass)(child,v);
+				}
+			}
+	}
 	setOption={
 		all:{
 			e:function(c,v){
@@ -757,18 +769,7 @@ var gui=(function(){
 			h:function(c,v){c._content.style.height=v;},
 			rot:function(c,v){c._content.style.setProperty('transform','rotate('+v+'deg)');}
 		},
-		object:new Proxy({},{get:function(t,optKey){
-			//if(optKey==='table')return function(c,v){};
-			return function(c,v){
-				c._format[optKey]=v;
-				var key,child;
-				for(key in c._childmap){
-					child=c._childmap[key];
-					if(child._options[optKey]===undefined)
-						(setOption[child._type][optKey]||pass)(child,v);
-				}
-			};
-		}}),
+		object:new Proxy({},{get:spreadOptionsToChildren}),
 		number:{
 			rnd:function(c,v){
 				if(c._format.rndval!==v){
@@ -960,11 +961,16 @@ var gui=(function(){
 			},
 			onedit:function(c,v){c._format.onedit=v;}
 		},
-		path:{}
+		path:{},
+		table:new Proxy({
+			head:function(c,v){
+				c.setAttribute('_head',v);
+				//c._content.children[0].classList.add('key');
+			}
+		},{get:spreadOptionsToChildren}),
+		tableRow:new Proxy({},{get:spreadOptionsToChildren}),
+		tableCell:new Proxy({},{get:spreadOptionsToChildren}),
 	}
-	setOption.table=setOption.object;
-	setOption.tableRow=setOption.object;
-	setOption.tableCell=setOption.object;
 
 	setValue={
 		object:function(data){
@@ -1223,6 +1229,7 @@ var gui=(function(){
 	}
 
 	return {
+		e:setOption,
 		init:init,
 		onTaskConnect:onTaskConnect,
 		update:processData

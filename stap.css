@@ -28,15 +28,17 @@ th,td {
 [contenteditable=true]:focus {box-shadow: 0px 0px 5px 1px rgba(79,155,247,1)}
 
 
+.table[_head="1"] tr:first-child{border-bottom:solid 2px gray; font-weight:bold}
 
-._tb[_keycol="1"] td[_keycol="1"]{
-	visibility:visible;
-	border-right:solid 2px gray;
-	padding: 2px 4px 2px 4px;
-}
-._tb[_keycol="0"] td[_keycol="1"]{
-	visibility:hidden;
-}
+
+/* ._tb[_keycol="1"] td[_keycol="1"]{ */
+	/* visibility:visible; */
+	/* border-right:solid 2px gray; */
+	/* padding: 2px 4px 2px 4px; */
+/* } */
+/* ._tb[_keycol="0"] td[_keycol="1"]{ */
+	/* visibility:hidden; */
+/* } */
 
 /* ul {margin-left: 10px;margin-right: 0px;margin-top:0px;margin-bottom:0px;padding-left: 15px;padding-right: 5px;} */
 
