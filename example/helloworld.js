@@ -1,10 +1,3 @@
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="mobile-web-app-capable" content="yes">
-<html><head>
-<script src="https://rawgit.com/vdv7/stapjs/master/stap.js"></script>
-<!-- <script src="stap.js"></script> -->
-<script>
 var task = {
 	
 	start: function(){
@@ -28,6 +21,3 @@ var task = {
 	//the 2 functions being called that are NOT defined above -- task.updateUI() and task.end() --
 	//	are defined by user-side software, so don't worry about them
 }
-
-</script>
-</head><body /></html>
