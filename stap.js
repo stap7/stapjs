@@ -1194,6 +1194,13 @@ var gui=(function(){
 		}
 		//start task
 		if(task.start){
+			//	define task.end
+			task.end=pass;
+			//	connect task.updateUI to gui.update;
+			task.updateUI = gui.update;
+			//	connect gui.action to task.userAction
+			if(task.onUserAction)gui.action = task.userAction;
+			else if(task.userAction)gui.action = task.userAction;
 			onTaskConnect();
 			task.start();
 		}else if(task.location=task.location || location.params['l']){
