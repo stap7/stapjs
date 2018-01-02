@@ -629,7 +629,7 @@ var gui=(function(){
 					if(!(optKey in options))
 						updateOption(child,optKey,parent._format[optKey]);
 			}else{								//edit element
-				typeofval=options['type'] || (val.constructor === Object?'undefined':typeof(val));
+				typeofval=options['type'] || ((val===undefined || val.constructor === Object)?'undefined':typeof(val));
 				if(typeofval!=='undefined' && child._type!==typeofval && !COMPATIBLE[child._type].has(typeofval)){
 					child._changeType(typeofval);
 					var allOptions=Object.assign({},parent._format,child._options);
@@ -991,15 +991,18 @@ var gui=(function(){
 			var i,key,val,options;
 			for(i=0;i<data.length;++i){
 				key=undefined;
+				val=undefined;
 				options={};
 				if(data[i].constructor===Object){	//get key,val,opt
 					for(var k in data[i]){
 						if(k.startsWith('@')){
-							val=data[i][k];
+							if(data[i][k].constructor!==Object)
+								val=data[i][k];
 							key=k.substr(1);
 						}else if(k.startsWith('#')){
 							if(!key && !val){
-								val=data[i][k];
+								if(data[i][k].constructor!==Object)
+									val=data[i][k];
 								key=parseInt(k.substr(1));;
 							}
 						}else options[k]=data[i][k];

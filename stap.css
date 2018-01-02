@@ -194,10 +194,10 @@ svg {position:absolute;left:0px;top:0px;width:100%;height:100%;}
 .emp3 {font-weight:bold;font-style:italic;text-decoration:underline}
 .emp4 {font-weight:bold;font-style:italic;text-decoration:underline;font-size:110%}
 
-.emp10 {background-color:#FFFF00}
-.emp20 {background-color:#FFdd00}
-.emp30 {background-color:#FFbb00}
-.emp40 {background-color:#FF9900}
+.emp10 {background-color:#FF9900}
+.emp20 {background-color:#FFbb00}
+.emp30 {background-color:#FFdd00}
+.emp40 {background-color:#FFFF00}
 
 
 .xy.frame {position:absolute;padding:0;overflow:visible}
