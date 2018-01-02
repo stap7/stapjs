@@ -189,6 +189,16 @@ svg {position:absolute;left:0px;top:0px;width:100%;height:100%;}
 
 .disabled {pointer-events:none; opacity:.5; contenteditable:false}
 
+.emp1 {font-weight:bold}
+.emp2 {font-weight:bold;font-style:italic}
+.emp3 {font-weight:bold;font-style:italic;text-decoration:underline}
+.emp4 {font-weight:bold;font-style:italic;text-decoration:underline;font-size:110%}
+
+.emp10 {background-color:#FFFF00}
+.emp20 {background-color:#FFdd00}
+.emp30 {background-color:#FFbb00}
+.emp40 {background-color:#FF9900}
+
 
 .xy.frame {position:absolute;padding:0;overflow:visible}
 .xy.main {position:relative;padding:0;overflow:visible}

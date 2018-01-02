@@ -236,8 +236,9 @@ var gui=(function(){
 	//////////////////////////////////////////////////////////////////////////////
 	// constants
 	var STAPCSS = "https://rawgit.com/vdv7/stapjs/master/stap.css";
+	// var STAPCSS = "stapjs/stap.css";
 	var OPTIONS=new Set([".","S","T","R","onsubedit"]),
-		TYPES=new Set();
+		TYPES=new Set([]);
 
 	var REQUIRED={
 		"T":[
@@ -745,6 +746,19 @@ var gui=(function(){
 				}
 			},
 			scroll:function(c,v){c._content.style.overflowY=v&1?'auto':null;},
+			emp:function(c,v){
+				var i,e;
+				if(c._format.emp)
+					for(i=0;i<c._format.emp.toString().length;++i){
+						e=10**i;
+						c._content.classList.remove('emp'+(Math.floor(c._format.emp/e)%10)*e);
+					}
+				c._format.emp=v;
+				for(i=0;i<v.toString().length;++i){
+					e=10**i;
+					c._content.classList.add('emp'+(Math.floor(v/e)%10)*e);
+				}
+			},
 			bg:function(c,v){c._content.style.backgroundColor=v;},
 			col:function(c,v){c._content.style.color=v;},
 			fnt:function(c,v){c._content.style.font=v;},
@@ -1099,6 +1113,25 @@ var gui=(function(){
 							document.write('ERROR: Cannot handle required task type(s): '+errors+'<br><br>');
 							quit=true;
 						}
+					}else if(key=='emphases'){
+						var selectors=[],i,e,rules,x;
+						for(i = 0; i < document.styleSheets.length; i++){
+							rules = document.styleSheets[i].rules || document.styleSheets[i].cssRules;
+							for(x in rules) {
+								if(typeof rules[x].selectorText == 'string')
+									selectors.push(rules[x].selectorText);
+							}
+						}
+						for(i=0;i<data.require.emphases.toString().length;++i){
+							e=10**i;
+							x=(Math.floor(data.require.emphases/e)%10)*e;
+							if(selectors.indexOf('emp'+x)<0)errors.push(x);
+						}
+						if(errors.length){
+							sendAction(0,{error:'Sorry, I cannot handle the required emphases: '+errors});
+							document.write('ERROR: Cannot handle required emphases: '+errors+'<br><br>');
+							quit=true;
+						}
 					}else{
 						sendAction(0,{error:'Sorry, I cannot handle "require" directive: '+key+':'+data.require[key]});
 						document.write('ERROR: Cannot handle "require" directive: '+key+':'+data.require[key]+'<br><br>');
@@ -1199,16 +1232,17 @@ var gui=(function(){
 			TYPES.delete('all');
 		}
 		//start task
-		if(task.start){
-			//	define task.end
-			task.end=pass;
+		if(task.onUserAction || task.userAction){
+			//	connect gui.action to task.userAction
+			if(task.onUserAction)gui.action = task.onUserAction;
+			else if(task.userAction)gui.action = task.userAction;
 			//	connect task.updateUI to gui.update;
 			task.updateUI = gui.update;
-			//	connect gui.action to task.userAction
-			if(task.onUserAction)gui.action = task.userAction;
-			else if(task.userAction)gui.action = task.userAction;
+			//	define task.end
+			task.end=pass;
+			//	start task
 			onTaskConnect();
-			task.start();
+			if(task.start)task.start();
 		}else if(task.location=task.location || location.params['l']){
 			gui.update(['Loading...']);
 			if(task.location.startsWith('ws://') || task.location.startsWith('wss://'))
