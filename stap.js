@@ -1125,7 +1125,7 @@ var gui=(function(){
 						for(i=0;i<data.require.emphases.toString().length;++i){
 							e=10**i;
 							x=(Math.floor(data.require.emphases/e)%10)*e;
-							if(selectors.indexOf('emp'+x)<0)errors.push(x);
+							if(selectors.indexOf('.emp'+x)<0)errors.push(x);
 						}
 						if(errors.length){
 							sendAction(0,{error:'Sorry, I cannot handle the required emphases: '+errors});
