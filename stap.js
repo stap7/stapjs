@@ -2,7 +2,7 @@
 	
 TODO:
 	next:
-		make this work for all modes:
+		test how this works for all modes:
 			client-side js
 				<script src=...>
 			server-side cgi (potentially stateless with jsonp)
