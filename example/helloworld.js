@@ -16,8 +16,8 @@ var task = {
 	}
 	
 	//the 2 functions defined above -- task.start() and task.userAction() --
-	//	are expected by user-side software, so make sure you don't change their names
+	//	are expected by user-side software, so make sure you don't change their names.
 	//
 	//the 2 functions being called that are NOT defined above -- task.updateUI() and task.end() --
-	//	are defined by user-side software, so don't worry about them
+	//	are defined by user-side software. 
 }

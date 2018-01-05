@@ -2,17 +2,9 @@
 	
 TODO:
 	next:
-		test how this works for all modes:
-			client-side js
-				<script src=...>
-			server-side cgi (potentially stateless with jsonp)
-				task.location=...
-			server-side ws
-				task.location='ws://...'
+		check that ws and jsonp protocols still work
 		get rid of unused helper functions
 	high priority:
-		check that "template" directive works
-			fix template.css loading bug (refreshnumerics not found)
 	bugs:
 		call onEdit after editable element has been updated (even tho it's from task-side)
 		account for vertical progress bars for tics, clicks
@@ -140,12 +132,25 @@ var task={},recv,ws;
 
 
 
+function connectToTaskScript(){
+	//	connect gui.action to task.userAction
+	if(task.onUserAction)gui.action = task.onUserAction;
+	else if(task.userAction)gui.action = task.userAction;
+	//	connect task.updateUI to gui.update;
+	task.updateUI = gui.update;
+	//	define task.end
+	task.end=pass;
+	//	start task
+	gui.onTaskConnect();
+	if(task.start)task.start();
+}
+
 function connectToTaskHTTP(){
 	
 	function urlWithQuery(url){
 		var i=url.indexOf('?');
 		if(i===-1)return url+'?callback=recv&';
-		if(i===url.length-1 || url.endsWith('&'))return url;
+		if(i===url.length-1 || url.endsWith('&'))return url+'callback=recv&';
 		return url+'&callback=recv&';
 	}
 
@@ -154,6 +159,21 @@ function connectToTaskHTTP(){
 		console.log('<- '+msg);
 		var s=document.createElement('script');
 		s.src=task.location+'d='+encodeURIComponent(msg)+(typeof(state)==='undefined'?'':('&s='+encodeURIComponent(state)));
+		s.onerror=function(e){console.log("Error loading "+task.location,e)}
+		if(HEAD._taskscript){
+			s.onload=function(){
+				HEAD.removeChild(s);
+			};
+		}else{  //first message
+			HEAD._taskscript=true;
+			s.onload=function(){
+				HEAD.removeChild(s);
+				//check if task code is client-side 
+				if(task.onUserAction || task.userAction){
+					connectToTaskScript();
+				}
+			};
+		}
 		HEAD.appendChild(s);
 	}
 	
@@ -180,7 +200,6 @@ function connectToTaskWS(){
 			console.log('<- '+msg);
 			ws.send(msg);
 		}
-
 		ws=new window.WebSocket(task.location);
 		ws.onerror=function(e){gui.update(null);gui.update({'error':'Cannot establish connection to '+task.location});};
 		ws.onopen=gui.onTaskConnect;
@@ -237,7 +256,7 @@ var gui=(function(){
 	// constants
 	var STAPCSS = "https://rawgit.com/vdv7/stapjs/master/stap.css";
 	// var STAPCSS = "stapjs/stap.css";
-	var OPTIONS=new Set([".","S","T","R","onsubedit"]),
+	var OPTIONS=new Set([".","S","T","R","onsubedit","patronym"]),
 		TYPES=new Set([]);
 
 	var REQUIRED={
@@ -461,13 +480,19 @@ var gui=(function(){
 	
 	function sendAction(element,val){
 		if(typeof(element)==='object'){
-			var elementid=element.id || getElementIndex(element.parentElement),
+			var elementid=element.id || element._getIndex(),
 				parent=element._parentState;
 			onEdit(element,elementid,parent);
-			gui.action([ums(),elementid,val]);
+			var fullname=[elementid];
+			for(var i=0;parent!==maindiv && i<(element._format.patronym||0);++i){
+				fullname.push(parent.id || parent._getIndex());
+				parent=parent._parentState;
+			}
+			gui.action([ums(),fullname.length>1?fullname:elementid,val]);
 		}else{
-			gui.action([ums(),element.id || element,val]);
-		} //TODO: figure out why element.id is in bottom clause, cause if it had a .id, wouldn't it be in middle clause?
+			gui.action([ums(),element,val]);
+			//gui.action([ums(),element.id || element,val]);
+		} //TODO: figure out why element.id is in bottom clause, cause if it had a .id, wouldn't it be object, and thus in top clause?
 		//	and check that getElementIndex gets called
 	}
 
@@ -516,7 +541,7 @@ var gui=(function(){
 		if(container.parentElement._type==='table'){ //tableRow
 			type='tableRow';
 			c=addDiv(container,[type,'lvl_'+level,'id_'+key,'main'],'tr');
-			c._frame=container;
+			c._frame=c;
 			c._parentState=container.parentElement;
 			c._realkey=key;
 			if(key.constructor===String){
@@ -554,6 +579,9 @@ var gui=(function(){
 		c._setValue=setValue[type];
 		// c._hide=function(){cf.style.visibility='hidden';};
 		// c._unhide=function(){cf.style.visibility='visible';};
+		c._getIndex=function(){
+			return getElementIndex(c._frame);
+		}
 		c._clear=function(){
 			c._content.innerHTML='';
 			c._childmap={};
@@ -724,11 +752,19 @@ var gui=(function(){
 				var key,child;
 				for(key in c._childmap){
 					child=c._childmap[key];
-					if(child._options[optKey]===undefined)
+					if(child._options[optKey]===undefined){
 						(setOption[child._type][optKey]||pass)(child,v);
+						// if(optKey in setOption[child._type])
+							// setOption[child._type][optKey](child,v);
+						// else
+							// defaultOptionBehavior(optKey,child,v);
+					}
 				}
 			}
 	}
+	// function defaultOptionBehavior(opt,c,v){
+		// c.setAttribute(opt,v);
+	// }
 	setOption={
 		all:{
 			e:function(c,v){
@@ -746,6 +782,7 @@ var gui=(function(){
 				}
 			},
 			scroll:function(c,v){c._content.style.overflowY=v&1?'auto':null;},
+			title:function(c,v){c._key.innerHTML=v===null?c._realkey:v;},
 			emp:function(c,v){
 				var i,e;
 				if(c._format.emp)
@@ -889,7 +926,8 @@ var gui=(function(){
 					c._content.removeEventListener("keyup", keepNumeric);
 				}
 			},
-			onedit:function(c,v){c._format.onedit=v;}
+			onedit:function(c,v){c._format.onedit=v;},
+			patronym:function(c,v){c._format.patronym=v;}
 		},
 		string:{
 			eT:function(c,v){
@@ -920,11 +958,12 @@ var gui=(function(){
 						sendAction(e.target.parentElement,e.target.innerHTML);
 					}
 			},
-			onedit:function(c,v){c._format.onedit=v;}
+			onedit:function(c,v){c._format.onedit=v;},
+			patronym:function(c,v){c._format.patronym=v;}
 		},
 		boolean:{
 			select:function(c,v){
-				c._content.innerHTML=c._key.innerHTML;
+				// c._content.innerHTML=c._key.innerHTML;
 				if(v==0){
 					c.setAttribute('_select','0');
 					c.setAttribute('onclick',null);
@@ -973,7 +1012,8 @@ var gui=(function(){
 				if(v)c.classList.remove('disabled');
 				else c.classList.add('disabled');
 			},
-			onedit:function(c,v){c._format.onedit=v;}
+			onedit:function(c,v){c._format.onedit=v;},
+			patronym:function(c,v){c._format.patronym=v;}
 		},
 		path:{},
 		table:new Proxy({
@@ -982,6 +1022,7 @@ var gui=(function(){
 				//c._content.children[0].classList.add('key');
 			}
 		},{get:spreadOptionsToChildren}),
+		// table:new Proxy({},{get:spreadOptionsToChildren}),
 		tableRow:new Proxy({},{get:spreadOptionsToChildren}),
 		tableCell:new Proxy({},{get:spreadOptionsToChildren}),
 	}
@@ -1172,7 +1213,7 @@ var gui=(function(){
 			if('template' in data){
 				var url=data.template;
 				delete data.template;
-				load(url,function(){processData(data);refreshNumerics(maindiv);});
+				load(url,function(){processData(data);}); //refreshNumerics(maindiv);});
 				return;
 			}
 			if('replace' in data){
@@ -1234,19 +1275,11 @@ var gui=(function(){
 				OPTIONS.add(optKey);
 			TYPES.delete('all');
 		}
-		//start task
 		if(task.onUserAction || task.userAction){
-			//	connect gui.action to task.userAction
-			if(task.onUserAction)gui.action = task.onUserAction;
-			else if(task.userAction)gui.action = task.userAction;
-			//	connect task.updateUI to gui.update;
-			task.updateUI = gui.update;
-			//	define task.end
-			task.end=pass;
-			//	start task
-			onTaskConnect();
-			if(task.start)task.start();
-		}else if(task.location=task.location || location.params['l']){
+			//if task code is client-side script...
+			connectToTaskScript();
+		}else if(task.location=(task.location || location.params['l'])){
+			// load url if one is supplied...
 			gui.update(['Loading...']);
 			if(task.location.startsWith('ws://') || task.location.startsWith('wss://'))
 				connectToTaskWS();
@@ -1254,7 +1287,6 @@ var gui=(function(){
 				connectToTaskHTTP();
 		}else{
 			gui.update(['Hey there...',{'@Intersted in the STAP?':['<a href=https://github.com/vdv7/stap>https://github.com/vdv7/stap</a>','<a href=https://github.com/vdv7/stapjs>https://github.com/vdv7/stapjs</a>']}]);
-			
 		}
 	}
 
@@ -1266,7 +1298,8 @@ var gui=(function(){
 	}
 
 	return {
-		e:setOption,
+		// OPTIONS:OPTIONS,
+		// e:setOption,
 		init:init,
 		onTaskConnect:onTaskConnect,
 		update:processData
