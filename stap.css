@@ -76,11 +76,11 @@ th,td {
 
 
 /* buttons */
-.boolean.main {direction:rtl}
 .boolean.sep {width:0px}
 /* .boolean.sep {width:5px} */
 .boolean.key {font-weight:normal}
 .boolean.main {
+	direction:rtl;
 	display:inline-block;
 	padding:.4em;
 	min-height:2em;
@@ -139,16 +139,29 @@ th,td {
     /* max-width: 100px; */
     text-align: left;
 }
-.boolean[_select="2"] .content:before {content:"\2610";padding-left:7px;padding-right:7px;}
+.boolean[_select="2"] .content:before {content:"\2610";padding-left:7px;padding-right:7px;text-decoration:none;font-style:normal;font-weight:normal}
 .boolean[_select="2"] .content:after {content:none}
-.boolean[_select="2"][_selected="1"] .content:before {content:"\2611";padding-left:7px;padding-right:7px;}
+.boolean[_select="2"][_selected="1"] .content:before {content:"\2611";padding-left:7px;padding-right:7px;text-decoration:none;font-style:normal;font-weight:normal}
 
 .main[_selected="1"] {background:#ddeeff !important ;}
 /* .boolean[_select="2"][_selected="1"].main {background:#ddeeff;} */
 
 
+/* div.table.content {display:table} */
+/* div.tableRow.main {display:table-row; width:auto} */
+/* .tableRow div.frame {display:table-cell} */
+/* .table[_head="1"] div.tableRow.main:first-child{ */
+	/* border-bottom:solid 2px gray; */
+	/* font-weight:bold; */
+	/* position:sticky; */
+	/* top:0px; */
+	/* background:#aabbff; */
+	/* z-index:1; */
+/* }  */
+
 .table[_head="1"] tr:first-child{border-bottom:solid 2px gray; font-weight:bold; } 
 .table[_head="1"] tr:first-child td {position:sticky;top:0px;background:#aabbff;z-index:1;} 
+
 /* .table.frame {padding-top:40px} */
 /* .table tr:first-child{position:absolute;top:0px} */
 
@@ -189,10 +202,11 @@ svg {position:absolute;left:0px;top:0px;width:100%;height:100%;}
 .emp3 {font-weight:bold;font-style:italic;text-decoration:underline}
 .emp4 {font-weight:bold;font-style:italic;text-decoration:underline;font-size:110%}
 
-.emp10 {background-color:#FF9900}
-.emp20 {background-color:#FFbb00}
-.emp30 {background-color:#FFdd00}
-.emp40 {background-color:#FFFF00}
+.emp10 {background-color:rgba(255,255,0,.2)}
+.emp20 {background-color:rgba(255,255,0,.4)}
+.emp30 {background-color:rgba(255,255,0,.6)}
+.emp40 {background-color:rgba(255,255,0,.8)}
+.emp50 {background-color:rgba(255,255,0,1)}
 
 
 .xy.frame {position:absolute;padding:0;overflow:visible}

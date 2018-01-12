@@ -2,8 +2,11 @@
 	
 TODO:
 	next:
+		new options dont re-spread (e.g. select=2 followed by select=1)
+		radio buttons should be selected only 1 within prior select=1 (and/or within a named group?)
 		check that ws and jsonp protocols still work
-		get rid of unused helper functions
+		logging options (console, volunteerscience, function call or hook, url w params)
+		clean up (e.g. get rid of unused helper functions)
 	high priority:
 	bugs:
 		call onEdit after editable element has been updated (even tho it's from task-side)
@@ -544,7 +547,7 @@ var gui=(function(){
 			c._frame=c;
 			c._parentState=container.parentElement;
 			c._realkey=key;
-			if(key.constructor===String){
+			if(typeof(key)==='string'){
 				c.id=key;
 				c._parentState._childmap[key]=c;
 			}
@@ -560,10 +563,11 @@ var gui=(function(){
 				cf._parentState=container.parentElement;
 			}
 			c=addDiv(cf,[type,'lvl_'+level,'id_'+key,'main']);
+			cf._main=c;
 			c._frame=cf;
 			c._parentState=cf._parentState;
 			c._realkey=key;
-			if(key.constructor===String){
+			if(typeof(key)==='string'){
 				c.id=key;
 				c._parentState._childmap[key]=c;
 			}
@@ -571,6 +575,7 @@ var gui=(function(){
 			cs=addDiv(c,[type,'lvl_'+level,'id_'+key,'sep']);
 			c._content=addDiv(c,[type,'lvl_'+level,'id_'+key,'content'],type==='table'?'table':'div');
 		}
+		c._main=c;
 		c._type=type;
 		c._level=level;
 		c._childmap={};
@@ -629,7 +634,7 @@ var gui=(function(){
 		var child,typeofval,displaykey,optKey;
 		if(typeof(key)==='number'){
 			child=parent._content.children[key];	//find frame by numeric key
-			if(child)child=child.children[0];		//get main div of child
+			if(child.classList.contains('frame'))child=child.children[0];		//get main div of child
 		}else
 			child=parent._childmap[key];
 		if(val===null){							//remove element
@@ -645,14 +650,14 @@ var gui=(function(){
 					} 
 					typeofval=typeof(val);
 				}
-				if(key && typeof(key)==='string')
-					displaykey=replaceShorthand(key).replace(HASHTAGS,'').trim();
-				else{
-					key=Object.keys(parent._childmap).length;
-					displaykey='';
-				}
+				// if(key && typeof(key)==='string')
+					// displaykey=replaceShorthand(key).replace(HASHTAGS,'').trim();
+				// else{
+					// // key=Object.keys(parent._childmap).length;
+					// displaykey='';
+				// }
 				child=addElement(parent._content,typeofval,parent._level+1,key);
-				child._key.innerHTML=displaykey;
+				child._key.innerHTML=key||'';
 				for(optKey in parent._format)
 					if(!(optKey in options))
 						updateOption(child,optKey,parent._format[optKey]);
@@ -666,6 +671,7 @@ var gui=(function(){
 							updateOption(child,optKey,allOptions[optKey]);
 				}
 			}
+			delete options.type;
 			if(options.R&2)sendAction(key,{R:2});
 			if(options.T){						//animation
 				var animate=options.T,aniopt={},curopt={};
@@ -748,11 +754,15 @@ var gui=(function(){
 	function spreadOptionsToChildren(t,optKey){
 		return (optKey in t)?t[optKey]:
 			function(c,v){
+				console.log('here');
 				c._format[optKey]=v;
-				var key,child;
-				for(key in c._childmap){
-					child=c._childmap[key];
-					if(child._options[optKey]===undefined){
+				var child;
+				for(var i=0;i<c._content.childElementCount;++i){
+				// for(key in c._childmap){
+					child=c._content.children[i]._main;
+					console.log(child,optKey,v);
+					if(child && child._options[optKey]===undefined){
+						console.log('do it');
 						(setOption[child._type][optKey]||pass)(child,v);
 						// if(optKey in setOption[child._type])
 							// setOption[child._type][optKey](child,v);
@@ -963,6 +973,7 @@ var gui=(function(){
 		},
 		boolean:{
 			select:function(c,v){
+				console.log(c,v);
 				// c._content.innerHTML=c._key.innerHTML;
 				if(v==0){
 					c.setAttribute('_select','0');
@@ -1040,12 +1051,16 @@ var gui=(function(){
 							if(data[i][k].constructor!==Object)
 								val=data[i][k];
 							key=k.substr(1);
-						}else if(k.startsWith('#')){
+						}else if(!key && !val && k.startsWith('#')){
 							if(!key && !val){
 								if(data[i][k].constructor!==Object)
 									val=data[i][k];
-								key=parseInt(k.substr(1));;
+								key=parseInt(k.substr(1));
 							}
+						}else if(!key && !val && k.constructor===Number){
+							if(data[i][k].constructor!==Object)
+								val=data[i][k];
+							key=k;
 						}else options[k]=data[i][k];
 					}
 				}else{
