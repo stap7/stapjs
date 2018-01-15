@@ -2,7 +2,6 @@
 	
 TODO:
 	next:
-		new options dont re-spread (e.g. select=2 followed by select=1)
 		radio buttons should be selected only 1 within prior select=1 (and/or within a named group?)
 		check that ws and jsonp protocols still work
 		logging options (console, volunteerscience, function call or hook, url w params)
@@ -754,15 +753,12 @@ var gui=(function(){
 	function spreadOptionsToChildren(t,optKey){
 		return (optKey in t)?t[optKey]:
 			function(c,v){
-				console.log('here');
 				c._format[optKey]=v;
 				var child;
 				for(var i=0;i<c._content.childElementCount;++i){
 				// for(key in c._childmap){
 					child=c._content.children[i]._main;
-					console.log(child,optKey,v);
 					if(child && child._options[optKey]===undefined){
-						console.log('do it');
 						(setOption[child._type][optKey]||pass)(child,v);
 						// if(optKey in setOption[child._type])
 							// setOption[child._type][optKey](child,v);
@@ -973,7 +969,6 @@ var gui=(function(){
 		},
 		boolean:{
 			select:function(c,v){
-				console.log(c,v);
 				// c._content.innerHTML=c._key.innerHTML;
 				if(v==0){
 					c.setAttribute('_select','0');
