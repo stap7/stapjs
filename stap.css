@@ -79,6 +79,7 @@ th,td {
 .boolean.sep {width:0px}
 /* .boolean.sep {width:5px} */
 .boolean.key {font-weight:normal}
+.boolean[_select="-1"] .key {min-width:100px;text-align:center}
 .boolean.main {
 	direction:rtl;
 	display:inline-block;
@@ -227,3 +228,4 @@ svg {position:absolute;left:0px;top:0px;width:100%;height:100%;}
 .id_titlebar .lvl_3 {display:inline; padding:0; position:relative; }
 .id_titlebar .lvl_3 .progress {display:inline-block;}
 
+.lvl_2.frame {display:inline-block;}

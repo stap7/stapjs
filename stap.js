@@ -2,8 +2,6 @@
 	
 TODO:
 	next:
-		radio buttons should be selected only 1 within prior select=1 (and/or within a named group?)
-		check that ws and jsonp protocols still work
 		logging options (console, volunteerscience, function call or hook, url w params)
 		clean up (e.g. get rid of unused helper functions)
 	high priority:
@@ -106,7 +104,11 @@ function load(urls, callback, onerror, type){
 		fileref.setAttribute("href", url);
 	}else{
 		try{eval(url);}
-		catch(e){console.log('not sure how to handle '+url);}
+		catch(e){
+			console.log('Not sure how to handle '+url+'.\nWill try to add as <style>...');
+			fileref=document.createElement("style");
+			HEAD.appendChild(fileref);
+		}
 		onload();
 		return;
 	}
@@ -121,7 +123,6 @@ function getElementIndex(c){
 	while( (c = c.previousSibling) != null ) ++i;
 	return i;
 }
-var HASHTAGS = new RegExp('#([^\\s]*)','g');
 var SVGNS="http://www.w3.org/2000/svg";
 function keepNumeric(e){
 	var numtxt=e.target.innerText.match(/-?\.?\d+.*/)[0];
@@ -388,7 +389,7 @@ var gui=(function(){
 	// for min/max option display (numeric elements)
 	progressbar={
 		percent:function(c,v){
-			return (100*(v-c._format.minval)/(c._format.maxval-c._format.minval))+'%';
+			return (100*(v-c._prop.minval)/(c._prop.maxval-c._prop.minval))+'%';
 		},
 		init:function(c){
 			if(!c._progressbar){	//add progressbar
@@ -398,39 +399,39 @@ var gui=(function(){
 				// c._progressval=addDiv(c._content,["progressval"]);
 				if(parseInt(c._content.offsetWidth)>parseInt(c._content.offsetHeight)){
 					c._progressbar.style.height='100%';
-					c._format.display=function(){
+					c._prop.display=function(){
 						c._progressbar.style.width=progressbar.percent(c,c._value);
-						c._format.valueSpan.innerHTML=c._format.fmt(c._value);
+						c._prop.valueSpan.innerHTML=c._prop.fmt(c._value);
 					}
 				}else{
 					c._progressbar.style.width='100%';
 					c._progressval.style.setProperty('transform','rotate(270deg)');
 					//c._progressval.style.setProperty('transform-origin','left top');
-					c._format.display=function(){
+					c._prop.display=function(){
 						c._progressbar.style.height=progressbar.percent(c,c._value);
-						c._format.valueSpan.innerHTML=c._format.fmt(c._value);
+						c._prop.valueSpan.innerHTML=c._prop.fmt(c._value);
 					}
 				}
-				if(c._format.eN)setOption.number.eN(c,c._format.eN);
+				if(c._prop.eN)setOption.number.eN(c,c._prop.eN);
 			}
-			if(c._format.rndval)progressbar.maketics(c);
+			if(c._prop.rndval)progressbar.maketics(c);
 		},
 		getValue:function(e){
 			var rect=this.getBoundingClientRect();
 			var c=this.parentElement;
-			var v=c._format.minval+(c._format.maxval-c._format.minval)*(e.pageX-rect.left)/rect.width;
-			c._setValue(c._format.rndval?ceil2(v,c._format.rndval):v);
+			var v=c._prop.minval+(c._prop.maxval-c._prop.minval)*(e.pageX-rect.left)/rect.width;
+			c._setValue(c._prop.rndval?ceil2(v,c._prop.rndval):v);
 			sendAction(c,c._value);
 		},
 		maketics:function(c){
 			//instead of changing bg size, maybe i can change the following:
 			//	background: repeating-linear-gradient(to left, gray, gray 1px, white 1px, white 10%);
 			// if(isChrome && getComputedStyle(c).getPropertyValue('box-sizing')!=='content-box')
-				// c._content.style.backgroundSize="calc("+progressbar.percent(c,c._format.rndval+c._format.minval)+" + 1px) 1px";
+				// c._content.style.backgroundSize="calc("+progressbar.percent(c,c._prop.rndval+c._prop.minval)+" + 1px) 1px";
 			// else
-				// c._content.style.backgroundSize=progressbar.percent(c,c._format.rndval+c._format.minval)+" 1px";
-			//c._format.rnd=function(){c._value=round2(c._value,v);};
-			c._content.style.background="repeating-linear-gradient(to left, gray, gray 1px, white 2px, white "+progressbar.percent(c,c._format.rndval+c._format.minval)+")";
+				// c._content.style.backgroundSize=progressbar.percent(c,c._prop.rndval+c._prop.minval)+" 1px";
+			//c._prop.rnd=function(){c._value=round2(c._value,v);};
+			c._content.style.background="repeating-linear-gradient(to left, gray, gray 1px, white 2px, white "+progressbar.percent(c,c._prop.rndval+c._prop.minval)+")";
 		},
 		removetics:function(c){
 			c._content.style.backgroundSize="0px 0px";
@@ -440,7 +441,7 @@ var gui=(function(){
 				progressbar.removetics(c);
 				c._progressbar.remove();
 				c._content.classList.remove("progress");
-				c._format.display=function(){c._format.valueSpan.innerHTML=c._format.fmt(c._value);};
+				c._prop.display=function(){c._prop.valueSpan.innerHTML=c._prop.fmt(c._value);};
 				c._progressbar=null;
 			}
 		}
@@ -452,28 +453,28 @@ var gui=(function(){
 	function ums(){return (new Date()).getTime()-startTime;}
 	
 	function onEdit(element,elementid,parent){
-		if(element._format.onedit!==undefined){
+		if(element._prop.onedit!==undefined){
 			let val,opt;
-			if(element._format.onedit && element._format.onedit.constructor===Array && element._format.onedit[1].constructor===Object){
-				val=element._format.onedit[0];
-				opt=element._format.onedit[1];
-			}else if(element._format.onedit && element._format.onedit.constructor===Object){
-				opt=element._format.onedit;
+			if(element._prop.onedit && element._prop.onedit.constructor===Array && element._prop.onedit[1].constructor===Object){
+				val=element._prop.onedit[0];
+				opt=element._prop.onedit[1];
+			}else if(element._prop.onedit && element._prop.onedit.constructor===Object){
+				opt=element._prop.onedit;
 			}else{
-				val=element._format.onedit;
+				val=element._prop.onedit;
 				opt={};
 			}
 			processElement(parent,elementid,val,opt,{});
 		}
-		if(parent._format.onsubedit!==undefined){
+		if(parent._prop.onsubedit!==undefined){
 			let val,opt;
-			if(parent._format.onsubedit && parent._format.onsubedit.constructor===Array && parent._format.onsubedit[1].constructor===Object){
-				val=parent._format.onsubedit[0];
-				opt=parent._format.onsubedit[1];
-			}else if(parent._format.onsubedit && parent._format.onsubedit.constructor===Object){
-				opt=parent._format.onsubedit;
+			if(parent._prop.onsubedit && parent._prop.onsubedit.constructor===Array && parent._prop.onsubedit[1].constructor===Object){
+				val=parent._prop.onsubedit[0];
+				opt=parent._prop.onsubedit[1];
+			}else if(parent._prop.onsubedit && parent._prop.onsubedit.constructor===Object){
+				opt=parent._prop.onsubedit;
 			}else{
-				val=parent._format.onsubedit;
+				val=parent._prop.onsubedit;
 				opt={};
 			}
 			processElement(parent._parentState,parent.id||getElementIndex(parent.parentElement),val,opt,{});
@@ -486,7 +487,7 @@ var gui=(function(){
 				parent=element._parentState;
 			onEdit(element,elementid,parent);
 			var fullname=[elementid];
-			for(var i=0;parent!==maindiv && i<(element._format.patronym||0);++i){
+			for(var i=0;parent!==maindiv && i<(element._prop.patronym||0);++i){
 				fullname.push(parent.id || parent._getIndex());
 				parent=parent._parentState;
 			}
@@ -579,7 +580,7 @@ var gui=(function(){
 		c._level=level;
 		c._childmap={};
 		c._options={};
-		c._format={};
+		c._prop={};
 		c._setValue=setValue[type];
 		// c._hide=function(){cf.style.visibility='hidden';};
 		// c._unhide=function(){cf.style.visibility='visible';};
@@ -594,7 +595,7 @@ var gui=(function(){
 			c._value=0;
 			c._select=undefined;
 			c._selected=undefined;
-			c._selectedDiv=undefined;
+			c._prop.selectedDiv=undefined;
 		};
 		c._remove=function(){
 			cf.parentElement.removeChild(cf);
@@ -649,22 +650,16 @@ var gui=(function(){
 					} 
 					typeofval=typeof(val);
 				}
-				// if(key && typeof(key)==='string')
-					// displaykey=replaceShorthand(key).replace(HASHTAGS,'').trim();
-				// else{
-					// // key=Object.keys(parent._childmap).length;
-					// displaykey='';
-				// }
 				child=addElement(parent._content,typeofval,parent._level+1,key);
 				child._key.innerHTML=key||'';
-				for(optKey in parent._format)
+				for(optKey in parent._prop)
 					if(!(optKey in options))
-						updateOption(child,optKey,parent._format[optKey]);
+						updateOption(child,optKey,parent._prop[optKey]);
 			}else{								//edit element
 				typeofval=options['type'] || ((val===undefined || val.constructor === Object)?'undefined':typeof(val));
 				if(typeofval!=='undefined' && child._type!==typeofval && !COMPATIBLE[child._type].has(typeofval)){
 					child._changeType(typeofval);
-					var allOptions=Object.assign({},parent._format,child._options);
+					var allOptions=Object.assign({},parent._prop,child._options);
 					for(optKey in allOptions)
 						if(!(optKey in options))
 							updateOption(child,optKey,allOptions[optKey]);
@@ -727,14 +722,14 @@ var gui=(function(){
 		object:pass,
 		number:function(c){
 			c._value=0;
-			if(!c._format.prefixSpan)c._format.prefixSpan=c._content.appendChild(document.createElement('span'));
-			if(!c._format.valueSpan)c._format.valueSpan=c._content.appendChild(document.createElement('span'));
-			if(!c._format.suffixSpan)c._format.suffixSpan=c._content.appendChild(document.createElement('span'));
-			if(!c._format.min)c._format.min=pass;
-			if(!c._format.max)c._format.max=pass;
-			if(!c._format.rnd)c._format.rnd=pass;
-			if(!c._format.fmt)c._format.fmt=self;
-			if(!c._format.display)c._format.display=function(){c._format.valueSpan.innerHTML=c._format.fmt(c._value);};
+			if(!c._prop.prefixSpan)c._prop.prefixSpan=c._content.appendChild(document.createElement('span'));
+			if(!c._prop.valueSpan)c._prop.valueSpan=c._content.appendChild(document.createElement('span'));
+			if(!c._prop.suffixSpan)c._prop.suffixSpan=c._content.appendChild(document.createElement('span'));
+			if(!c._prop.min)c._prop.min=pass;
+			if(!c._prop.max)c._prop.max=pass;
+			if(!c._prop.rnd)c._prop.rnd=pass;
+			if(!c._prop.fmt)c._prop.fmt=self;
+			if(!c._prop.display)c._prop.display=function(){c._prop.valueSpan.innerHTML=c._prop.fmt(c._value);};
 		},
 		string:function(c){c._sendText=function(e){sendAction(e.target.parentElement,e.target.innerHTML);}},
 		boolean:pass,
@@ -753,24 +748,17 @@ var gui=(function(){
 	function spreadOptionsToChildren(t,optKey){
 		return (optKey in t)?t[optKey]:
 			function(c,v){
-				c._format[optKey]=v;
+				c._prop[optKey]=v; //TODO: is this necessary? what for?
 				var child;
 				for(var i=0;i<c._content.childElementCount;++i){
-				// for(key in c._childmap){
 					child=c._content.children[i]._main;
 					if(child && child._options[optKey]===undefined){
 						(setOption[child._type][optKey]||pass)(child,v);
-						// if(optKey in setOption[child._type])
-							// setOption[child._type][optKey](child,v);
-						// else
-							// defaultOptionBehavior(optKey,child,v);
 					}
 				}
 			}
 	}
-	// function defaultOptionBehavior(opt,c,v){
-		// c.setAttribute(opt,v);
-	// }
+	
 	setOption={
 		all:{
 			e:function(c,v){
@@ -791,12 +779,12 @@ var gui=(function(){
 			title:function(c,v){c._key.innerHTML=v===null?c._realkey:v;},
 			emp:function(c,v){
 				var i,e;
-				if(c._format.emp)
-					for(i=0;i<c._format.emp.toString().length;++i){
+				if(c._prop.emp)
+					for(i=0;i<c._prop.emp.toString().length;++i){
 						e=10**i;
-						c._content.classList.remove('emp'+(Math.floor(c._format.emp/e)%10)*e);
+						c._content.classList.remove('emp'+(Math.floor(c._prop.emp/e)%10)*e);
 					}
-				c._format.emp=v;
+				c._prop.emp=v;
 				for(i=0;i<v.toString().length;++i){
 					e=10**i;
 					c._content.classList.add('emp'+(Math.floor(v/e)%10)*e);
@@ -829,52 +817,52 @@ var gui=(function(){
 		object:new Proxy({},{get:spreadOptionsToChildren}),
 		number:{
 			rnd:function(c,v){
-				if(c._format.rndval!==v){
-					c._format.rndval=v;
+				if(c._prop.rndval!==v){
+					c._prop.rndval=v;
 					if(v){
-						c._format.rnd=function(){c._value=round2(c._value,v);};
+						c._prop.rnd=function(){c._value=round2(c._value,v);};
 						if(c._progressbar)progressbar.maketics(c);
 						updateContainers.add(c);
 					}else{
-						c._format.rnd=pass;
+						c._prop.rnd=pass;
 						if(c._progressbar)progressbar.removetics(c);
 					}
 				}
 			},
 			'>=':function(c,v){
-				if(c._format.minval!==v){
-					c._format.minval=v;
+				if(c._prop.minval!==v){
+					c._prop.minval=v;
 					if(v!==null){
-						c._format.min=function(){if(c._value<v)c._value=v;};
-						if(c._format.max!==pass)
+						c._prop.min=function(){if(c._value<v)c._value=v;};
+						if(c._prop.max!==pass)
 							progressbar.init(c);
 						// else
-							// c._format.display=function(){c._content.innerHTML=c._format.fmt(c._value);};
+							// c._prop.display=function(){c._content.innerHTML=c._prop.fmt(c._value);};
 						updateContainers.add(c);
 					}else{
-						c._format.min=pass;
+						c._prop.min=pass;
 						progressbar.destroy(c);
-						// c._format.display=function(){c._content.innerHTML=c._format.fmt(c._value);};
+						// c._prop.display=function(){c._content.innerHTML=c._prop.fmt(c._value);};
 						updateContainers.add(c);
 					}
 				}
 			},
 			'<=':function(c,v){
-				if(c._format.maxval!==v){
-					c._format.maxval=v;
+				if(c._prop.maxval!==v){
+					c._prop.maxval=v;
 					if(v!==null){
-						c._format.max=function(){if(c._value>v)c._value=v;};
-						if(c._format.min!==pass)
+						c._prop.max=function(){if(c._value>v)c._value=v;};
+						if(c._prop.min!==pass)
 							progressbar.init(c);
 						// else
-							// //c._format.
-							// c._format.display=function(){c._content.innerHTML=c._value+" of "+c._format.fmt(c._format.maxval);};
+							// //c._prop.
+							// c._prop.display=function(){c._content.innerHTML=c._value+" of "+c._prop.fmt(c._prop.maxval);};
 						//TODO: add n of X display to suffix -- maybe use fmt() to change suffix
 						updateContainers.add(c);
 					}else{
-						c._format.max=pass;
+						c._prop.max=pass;
 						progressbar.destroy(c);
-						// c._format.display=function(){c._content.innerHTML=c._format.fmt(c._value);};
+						// c._prop.display=function(){c._content.innerHTML=c._prop.fmt(c._value);};
 						updateContainers.add(c);
 					}
 				}
@@ -883,19 +871,19 @@ var gui=(function(){
 				var dollarsign=v.indexOf('$');
 				if(dollarsign>-1){
 					v=v.replace('$',' ').trim();
-					c._format.prefixSpan.innerHTML='$';
+					c._prop.prefixSpan.innerHTML='$';
 				}
-				c._format.suffixSpan.innerHTML=v;
+				c._prop.suffixSpan.innerHTML=v;
 			},
 			time:function(c,v){
 				if(v){
-					c._format.prefixSpan.innerHTML='';
-					c._format.suffixSpan.innerHTML='';
-					c._format.fmt=function(x){
+					c._prop.prefixSpan.innerHTML='';
+					c._prop.suffixSpan.innerHTML='';
+					c._prop.fmt=function(x){
 						return new Date(x*1000).toString(v);
 					};
 				}else{
-					c._format.fmt=self;
+					c._prop.fmt=self;
 				}
 				updateContainers.add(c);
 			},
@@ -903,37 +891,37 @@ var gui=(function(){
 				//TODO: account for progressbar and x of n
 				//	may be nice to have a sep div for value, and a sep div for styling (e.g. styling can be the progressbar or the "of N")
 				//
-				c._format.eN=v;
+				c._prop.eN=v;
 				if(v&1 || v&2 || v&4){
 					if(c._progressbar){
-						c._format.valueSpan.setAttribute('contenteditable',false);
-						c._format.valueSpan.removeEventListener("keyup", keepNumeric);
-						c._format.valueSpan.onkeypress=null;
-						c._format.valueSpan.onblur=null;
-						c._format.valueSpan.oninput=null;
+						c._prop.valueSpan.setAttribute('contenteditable',false);
+						c._prop.valueSpan.removeEventListener("keyup", keepNumeric);
+						c._prop.valueSpan.onkeypress=null;
+						c._prop.valueSpan.onblur=null;
+						c._prop.valueSpan.oninput=null;
 						c._content.addEventListener('click',progressbar.getValue,false);
 					}else{
 						c._content.removeEventListener('click',progressbar.getValue,false);
-						c._format.valueSpan.setAttribute('contenteditable',true);
+						c._prop.valueSpan.setAttribute('contenteditable',true);
 						if(!document.activeElement.getAttribute('contenteditable')){
-							c._format.valueSpan.focus();
-							setTimeout(()=>{select(c._format.valueSpan)},1);
+							c._prop.valueSpan.focus();
+							setTimeout(()=>{select(c._prop.valueSpan)},1);
 						}
-						c._format.valueSpan.addEventListener("keyup", keepNumeric, false);
-						if(v&1)c._format.valueSpan.onkeypress=function(e){if(e.keyCode==13){sendAction(c,parseFloat(c._content.innerText));return false;}};
-						else c._format.valueSpan.onkeypress=null;
-						if(v&2)c._format.valueSpan.onblur=function(){sendAction(c,parseFloat(c._content.innerText));};
-						else c._format.valueSpan.onblur=null;
-						if(v&4)c._format.valueSpan.oninput=function(){sendAction(c,parseFloat(c._content.innerText));};
-						else c._format.valueSpan.oninput=null;
+						c._prop.valueSpan.addEventListener("keyup", keepNumeric, false);
+						if(v&1)c._prop.valueSpan.onkeypress=function(e){if(e.keyCode==13){sendAction(c,parseFloat(c._content.innerText));return false;}};
+						else c._prop.valueSpan.onkeypress=null;
+						if(v&2)c._prop.valueSpan.onblur=function(){sendAction(c,parseFloat(c._content.innerText));};
+						else c._prop.valueSpan.onblur=null;
+						if(v&4)c._prop.valueSpan.oninput=function(){sendAction(c,parseFloat(c._content.innerText));};
+						else c._prop.valueSpan.oninput=null;
 					}
 				}else{
 					c._content.setAttribute('contenteditable',false);
 					c._content.removeEventListener("keyup", keepNumeric);
 				}
 			},
-			onedit:function(c,v){c._format.onedit=v;},
-			patronym:function(c,v){c._format.patronym=v;}
+			onedit:function(c,v){c._prop.onedit=v;},
+			patronym:function(c,v){c._prop.patronym=v;}
 		},
 		string:{
 			eT:function(c,v){
@@ -964,12 +952,11 @@ var gui=(function(){
 						sendAction(e.target.parentElement,e.target.innerHTML);
 					}
 			},
-			onedit:function(c,v){c._format.onedit=v;},
-			patronym:function(c,v){c._format.patronym=v;}
+			onedit:function(c,v){c._prop.onedit=v;},
+			patronym:function(c,v){c._prop.patronym=v;}
 		},
 		boolean:{
 			select:function(c,v){
-				// c._content.innerHTML=c._key.innerHTML;
 				if(v==0){
 					c.setAttribute('_select','0');
 					c.setAttribute('onclick',null);
@@ -977,18 +964,26 @@ var gui=(function(){
 					c.onmouseup=function(){sendAction(c,false);};
 				}else if(v==1){
 					c.setAttribute('_select','1');
+					c._prop.selectContainer=c._parentState;
+					if(c._options.select===undefined){
+						while(c._prop.selectContainer._options.select===undefined){
+							c._prop.selectContainer=c._prop.selectContainer._parentState;
+						}
+					}
+					c._prop.selectContainer._prop.selectedDiv=undefined;
+					if(c.getAttribute('_selected')==1)c.setAttribute('_selected',0);
 					c.setAttribute('onmousedown',null);
 					c.setAttribute('onmouseup',null);
 					c.onclick=function(){
 						if(c.getAttribute("_selected")==1){
 							c.setAttribute("_selected",0);
-							c._parentState._selectedDiv=undefined;
+							c._prop.selectContainer._prop.selectedDiv=undefined;
 							sendAction(c,false);
 						}else{
 							c.setAttribute("_selected",1);
-							if(c._parentState._selectedDiv!=undefined)
-								c._parentState._selectedDiv.setAttribute("_selected",0);
-							c._parentState._selectedDiv=c;
+							if(c._prop.selectContainer._prop.selectedDiv!=undefined)
+								c._prop.selectContainer._prop.selectedDiv.setAttribute("_selected",0);
+							c._prop.selectContainer._prop.selectedDiv=c;
 							sendAction(c,true);
 						}
 					}
@@ -1018,17 +1013,15 @@ var gui=(function(){
 				if(v)c.classList.remove('disabled');
 				else c.classList.add('disabled');
 			},
-			onedit:function(c,v){c._format.onedit=v;},
-			patronym:function(c,v){c._format.patronym=v;}
+			onedit:function(c,v){c._prop.onedit=v;},
+			patronym:function(c,v){c._prop.patronym=v;}
 		},
 		path:{},
 		table:new Proxy({
 			head:function(c,v){
 				c.setAttribute('_head',v);
-				//c._content.children[0].classList.add('key');
 			}
 		},{get:spreadOptionsToChildren}),
-		// table:new Proxy({},{get:spreadOptionsToChildren}),
 		tableRow:new Proxy({},{get:spreadOptionsToChildren}),
 		tableCell:new Proxy({},{get:spreadOptionsToChildren}),
 	}
@@ -1074,10 +1067,10 @@ var gui=(function(){
 		},
 		number:function(data){
 			if(typeof(data)==='number')this._value=data;
-			this._format.min();
-			this._format.max();
-			this._format.rnd();
-			this._format.display();
+			this._prop.min();
+			this._prop.max();
+			this._prop.rnd();
+			this._prop.display();
 			updateContainers.delete(this);
 		},
 		string:function(data){
@@ -1091,14 +1084,14 @@ var gui=(function(){
 					var container=this;
 					setTimeout(function(){container.setAttribute("_selected",0)},250);
 				}else if(this.getAttribute('_select')=='1'){
-					if(this._parentState._selectedDiv!=undefined)
-						this._parentState._selectedDiv.setAttribute("_selected",0);
-					this._parentState._selectedDiv=this;
+					if(this._prop.selectContainer._prop.selectedDiv!==undefined)
+						this._prop.selectContainer._prop.selectedDiv.setAttribute("_selected",0);
+					this._prop.selectContainer._prop.selectedDiv=this;
 				}
 			}else{
 				this.setAttribute("_selected",0);
-				if(this._parentState._selectedDiv==this)
-					this._parentState._selectedDiv=undefined;
+				if(this.getAttribute('_select')=='1' && this._prop.selectContainer._prop.selectedDiv===this)
+					this._prop.selectContainer._prop.selectedDiv=undefined;
 			}
 			updateContainers.delete(this);
 		},
@@ -1277,7 +1270,7 @@ var gui=(function(){
 		//create foundational element
 		document.body.parentElement._childmap={};
 		maindiv=addElement(document.body,'object',0,"__main__");
-		maindiv._format.select=-1;
+		maindiv._prop.select=-1;
 		//collect all options
 		for(var key in setOption){
 			TYPES.add(key);
