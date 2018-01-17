@@ -52,6 +52,7 @@ Date.prototype.toString=function(format){
 if(String.prototype.startsWith===undefined)String.prototype.startsWith=function(prefix){return this.slice(0,prefix.length)===prefix;};
 if(String.prototype.endsWith===undefined)String.prototype.endsWith=function(suffix){return this.slice(this.length-suffix.length)===suffix;};
 String.prototype.replaceAll=function(search,replacement){return this.split(search).join(replacement);};
+Object.withDefault=(defaultValue,o={})=>new Proxy(o,{get:(o,k)=>(k in o)?o[k]:defaultValue});
 function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
   var angleInRadians = (angleInDegrees-90) * Math.PI / 180.0;
   return {
@@ -134,123 +135,9 @@ function keepNumeric(e){
 var task={},recv,ws;
 
 
-
-function connectToTaskScript(){
-	//	connect gui.action to task.userAction
-	if(task.onUserAction)gui.action = task.onUserAction;
-	else if(task.userAction)gui.action = task.userAction;
-	//	connect task.updateUI to gui.update;
-	task.updateUI = gui.update;
-	//	define task.end
-	task.end=pass;
-	//	start task
-	gui.onTaskConnect();
-	if(task.start)task.start();
+function logline(direction,data){	//TODO: account for diff ways of logging/saving file (e.g. GET at web addr, POST via ajax, call func)
+	console.log((new Date()).getTime()+'\t'+direction+'\t'+JSON.stringify(data));
 }
-
-function connectToTaskHTTP(){
-	
-	function urlWithQuery(url){
-		var i=url.indexOf('?');
-		if(i===-1)return url+'?callback=recv&';
-		if(i===url.length-1 || url.endsWith('&'))return url+'callback=recv&';
-		return url+'&callback=recv&';
-	}
-
-	gui.action = function(data){
-		var msg=JSON.stringify(data);
-		console.log('<- '+msg);
-		var s=document.createElement('script');
-		s.src=task.location+'d='+encodeURIComponent(msg)+(typeof(state)==='undefined'?'':('&s='+encodeURIComponent(state)));
-		s.onerror=function(e){console.log("Error loading "+task.location,e)}
-		if(HEAD._taskscript){
-			s.onload=function(){
-				HEAD.removeChild(s);
-			};
-		}else{  //first message
-			HEAD._taskscript=true;
-			s.onload=function(){
-				HEAD.removeChild(s);
-				//check if task code is client-side 
-				if(task.onUserAction || task.userAction){
-					connectToTaskScript();
-				}
-			};
-		}
-		HEAD.appendChild(s);
-	}
-	
-	recv = function(data){
-		console.log('-> ',data);
-		try{								//redirect
-			var url=new URL(data);
-			task.location=urlWithQuery(url.origin+url.pathname);
-			gui.onTaskConnect();
-		}catch(e){							//parse task message
-			gui.update(data);
-		}
-	}
-
-	task.location=urlWithQuery(task.location);
-	gui.onTaskConnect();
-
-}
-
-function connectToTaskWS(){
-	if("WebSocket" in window){
-		gui.action = function(data){
-			var msg=JSON.stringify(data);
-			console.log('<- '+msg);
-			ws.send(msg);
-		}
-		ws=new window.WebSocket(task.location);
-		ws.onerror=function(e){gui.update(null);gui.update({'error':'Cannot establish connection to '+task.location});};
-		ws.onopen=gui.onTaskConnect;
-		ws.onclose=function(event){
-			var reason;
-			// See http://tools.ietf.org/html/rfc6455#section-7.4.1
-			if (event.code == 1000)
-				reason = "";
-			else if(event.code == 1001)
-				reason = "An endpoint is \"going away\", such as a server going down or a browser having navigated away from a page.";
-			else if(event.code == 1002)
-				reason = "An endpoint is terminating the connection due to a protocol error";
-			else if(event.code == 1003)
-				reason = "An endpoint is terminating the connection because it has received a type of data it cannot accept (e.g., an endpoint that understands only text data MAY send this if it receives a binary message).";
-			else if(event.code == 1004)
-				reason = "Reserved. The specific meaning might be defined in the future.";
-			else if(event.code == 1005)
-				reason = "No status code was actually present.";
-			else if(event.code == 1006)
-			   reason = "The connection was closed abnormally, e.g., without sending or receiving a Close control frame";
-			else if(event.code == 1007)
-				reason = "An endpoint is terminating the connection because it has received data within a message that was not consistent with the type of the message (e.g., non-UTF-8 [http://tools.ietf.org/html/rfc3629] data within a text message).";
-			else if(event.code == 1008)
-				reason = "An endpoint is terminating the connection because it has received a message that \"violates its policy\". This reason is given either if there is no other sutible reason, or if there is a need to hide specific details about the policy.";
-			else if(event.code == 1009)
-			   reason = "An endpoint is terminating the connection because it has received a message that is too big for it to process.";
-			else if(event.code == 1010) // Note that this status code is not used by the server, because it can fail the WebSocket handshake instead.
-				reason = "An endpoint (client) is terminating the connection because it has expected the server to negotiate one or more extension, but the server didn't return them in the response message of the WebSocket handshake. <br /> Specifically, the extensions that are needed are: " + event.reason;
-			else if(event.code == 1011)
-				reason = "A server is terminating the connection because it encountered an unexpected condition that prevented it from fulfilling the request.";
-			else if(event.code == 1015)
-				reason = "The connection was closed due to a failure to perform a TLS handshake (e.g., the server certificate can't be verified).";
-			else
-				reason = "Unknown reason";
-			console.log('Connection closed. '+reason);
-			//gui.update({'error':'Connection closed. '+reason});
-			//gui.update(['Connection closed.']);
-		};
-		ws.onmessage=function(msg){
-			console.log('-> '+msg.data);
-			gui.update(JSON.parse(msg.data));
-		};
-	}else{
-		gui.update(null);
-		gui.update([{'@Error':'Your browser does not support websockets. Please use a modern browser to run this application.'}]);
-	}
-}
-
 
 
 var gui=(function(){
@@ -278,13 +165,10 @@ var gui=(function(){
 
 	var ANIMATABLE={'x':'left','y':'top','w':'width','h':'height','r':'borderRadius','bg':'backgroundColor','bd':'borderStyle','bdw':'borderWidth','bdc':'borderColor','pad':'padding','col':'color','rot':'rotation'};
 
-	var COMPATIBLE=new Proxy({
+	var COMPATIBLE=Object.withDefault(EMPTYSET,{
 			path:new Set(['string','object']),
 			table:new Set(['object']),
-		},
-		{get:function(t,key){
-			return (key in t)?t[key]:EMPTYSET;
-		}});
+		});
 
 	var COLOROPTIONS=new Set(['bg','col','bdc']);
 
@@ -491,12 +375,11 @@ var gui=(function(){
 				fullname.push(parent.id || parent._getIndex());
 				parent=parent._parentState;
 			}
-			gui.action([ums(),fullname.length>1?fullname:elementid,val]);
-		}else{
-			gui.action([ums(),element,val]);
-			//gui.action([ums(),element.id || element,val]);
-		} //TODO: figure out why element.id is in bottom clause, cause if it had a .id, wouldn't it be object, and thus in top clause?
-		//	and check that getElementIndex gets called
+			element=fullname.length>1?fullname:elementid;
+		}
+		var action=[ums(),element,val];
+		logline('<',action);
+		gui.action(action);
 	}
 
 	var sendText={
@@ -641,7 +524,7 @@ var gui=(function(){
 			if(child)child._remove();
 		}else{
 			if(child===undefined){				//new element
-				typeofval=options['type'];
+				typeofval=options.type;
 				if(!typeofval){
 					if(val===undefined){ //default behavior (maybe think this through for boxes that arent buttons)
 						if(options.eT)val=""; // !!TODO: this was changed, should change it back or change stap.txt (currently specifying only options defaults to <<state>>)
@@ -656,7 +539,7 @@ var gui=(function(){
 					if(!(optKey in options))
 						updateOption(child,optKey,parent._prop[optKey]);
 			}else{								//edit element
-				typeofval=options['type'] || ((val===undefined || val.constructor === Object)?'undefined':typeof(val));
+				typeofval=options.type || ((val===undefined || val.constructor === Object)?'undefined':typeof(val));
 				if(typeofval!=='undefined' && child._type!==typeofval && !COMPATIBLE[child._type].has(typeofval)){
 					child._changeType(typeofval);
 					var allOptions=Object.assign({},parent._prop,child._options);
@@ -748,7 +631,7 @@ var gui=(function(){
 	function spreadOptionsToChildren(t,optKey){
 		return (optKey in t)?t[optKey]:
 			function(c,v){
-				c._prop[optKey]=v; //TODO: is this necessary? what for?
+				c._prop[optKey]=v;
 				var child;
 				for(var i=0;i<c._content.childElementCount;++i){
 					child=c._content.children[i]._main;
@@ -781,12 +664,12 @@ var gui=(function(){
 				var i,e;
 				if(c._prop.emp)
 					for(i=0;i<c._prop.emp.toString().length;++i){
-						e=10**i;
+						e=Math.pow(10,i);
 						c._content.classList.remove('emp'+(Math.floor(c._prop.emp/e)%10)*e);
 					}
 				c._prop.emp=v;
 				for(i=0;i<v.toString().length;++i){
-					e=10**i;
+					e=Math.pow(10,i);
 					c._content.classList.add('emp'+(Math.floor(v/e)%10)*e);
 				}
 			},
@@ -1000,7 +883,7 @@ var gui=(function(){
 							sendAction(c,true);
 						}
 					}
-				}else if(v==.5){
+				}else if(v==0.5){
 					c.setAttribute('_select','0.5');
 				}else{
 					c.setAttribute('_select','-1');
@@ -1018,9 +901,7 @@ var gui=(function(){
 		},
 		path:{},
 		table:new Proxy({
-			head:function(c,v){
-				c.setAttribute('_head',v);
-			}
+			head:function(c,v){c.setAttribute('_head',v);}
 		},{get:spreadOptionsToChildren}),
 		tableRow:new Proxy({},{get:spreadOptionsToChildren}),
 		tableCell:new Proxy({},{get:spreadOptionsToChildren}),
@@ -1110,8 +991,10 @@ var gui=(function(){
 	setValue.tableCell=setValue.object;
 
 	//////////////////////////////////////////////////////////////////////////////
+	// main function call to update the gui
 
-	function processData(data){
+	function update(data){
+		logline('>',data);
 		if(data===null){
 			maindiv._content.innerHTML='';
 			maindiv._childmap={};
@@ -1122,7 +1005,7 @@ var gui=(function(){
 			if(data.S){		//optional delay
 				var delay=waitTime(data.S);
 				delete data.S;
-				setTimeout(function(){processData(data);},delay);
+				setTimeout(function(){update(data);},delay);
 				return;
 			}
 			if(data.R&2)sendAction(0,{R:2});
@@ -1147,21 +1030,21 @@ var gui=(function(){
 							quit=true;
 						}
 					}else if(key=='events'){
-						errors=data.require.events.filter(function(x){return !(x in EVENTS)});
+						errors=data.require.events.filter(x=>!(x in EVENTS));
 						if(errors.length){
 							sendAction(0,{error:'Sorry, I cannot handle the required event(s): '+errors});
 							document.write('ERROR: Cannot handle required task event(s): '+errors+'<br><br>');
 							quit=true;
 						}
 					}else if(key=='types'){
-						errors=data.require.types.filter(function(x){return !TYPES.has(x)});
+						errors=data.require.types.filter(x=>!TYPES.has(x));
 						if(errors.length){
 							sendAction(0,{error:'Sorry, I cannot handle the required type(s): '+errors});
 							document.write('ERROR: Cannot handle required task type(s): '+errors+'<br><br>');
 							quit=true;
 						}
 					}else if(key=='emphases'){
-						var selectors=[],i,e,rules,x;
+						let selectors=[],i,e,rules,x;
 						for(i = 0; i < document.styleSheets.length; i++){
 							rules = document.styleSheets[i].rules || document.styleSheets[i].cssRules;
 							for(x in rules) {
@@ -1170,7 +1053,7 @@ var gui=(function(){
 							}
 						}
 						for(i=0;i<data.require.emphases.toString().length;++i){
-							e=10**i;
+							e=Math.pow(10,i);
 							x=(Math.floor(data.require.emphases/e)%10)*e;
 							if(selectors.indexOf('.emp'+x)<0)errors.push(x);
 						}
@@ -1190,13 +1073,13 @@ var gui=(function(){
 			}
 			if('client' in data){
 				var reply={};
-				for(var i=0;i<data.client.length;++i){
+				for(let i=0;i<data.client.length;++i){
 					if(data.client[i]=='url'){
-						reply['url']=objectify(location);
+						reply.url=objectify(location);
 					}else if(data.client[i]=='screen'){
-						reply['screen']=objectify(screen);
+						reply.screen=objectify(screen);
 					}else if(data.client[i]=='ip'){
-						if(ipAddress)reply['ip']=ipAddress;
+						if(ipAddress)reply.ip=ipAddress;
 						else
 							load('https://api.ipify.org/?format=jsonp&callback=gotip',
 								null,
@@ -1206,7 +1089,7 @@ var gui=(function(){
 								},
 								'js');
 					}else if(data.client[i]=='userAgent'){
-						reply['userAgent']=clientInformation.userAgent;
+						reply.userAgent=clientInformation.userAgent;
 					}
 				}
 				if(Object.keys(reply).length)
@@ -1216,7 +1099,7 @@ var gui=(function(){
 			if('template' in data){
 				var url=data.template;
 				delete data.template;
-				load(url,function(){processData(data);}); //refreshNumerics(maindiv);});
+				load(url,function(){update(data);}); //refreshNumerics(maindiv);});
 				return;
 			}
 			if('replace' in data){
@@ -1262,10 +1145,13 @@ var gui=(function(){
 		if(maindiv._options.scroll&2)window.scrollTo(0,document.body.scrollHeight);
 	}
 
+	//////////////////////////////////////////////////////////////////////////////
+	// init window and connect to task
+	
 	function init(){
 		//check and make sure basic stap.css template is loaded
 		var x=document.getElementsByTagName('link');
-		for(var i=0;i<x.length;++i){if(x[i]['href'].endsWith('stap.css'))break;}
+		for(var i=0;i<x.length;++i){if(x[i].href.endsWith('stap.css'))break;}
 		if(i==x.length){load(STAPCSS,init);return;}
 		//create foundational element
 		document.body.parentElement._childmap={};
@@ -1281,7 +1167,7 @@ var gui=(function(){
 		if(task.onUserAction || task.userAction){
 			//if task code is client-side script...
 			connectToTaskScript();
-		}else if(task.location=(task.location || location.params['l'])){
+		}else if(task.location=(task.location || location.params.l)){
 			// load url if one is supplied...
 			gui.update(['Loading...']);
 			if(task.location.startsWith('ws://') || task.location.startsWith('wss://'))
@@ -1294,18 +1180,129 @@ var gui=(function(){
 	}
 
 	function onTaskConnect(){
-		processData(null);
+		update(null);
 		startTime=(new Date()).getTime();
 		sendAction(0,[0]);
 		window.addEventListener('unload',function(){sendAction(0,[1]);},false);
 	}
 
+	function connectToTaskScript(){
+		//	connect gui.action to task.userAction
+		if(task.onUserAction)gui.action = task.onUserAction;
+		else if(task.userAction)gui.action = task.userAction;
+		//	connect task.updateUI to gui.update;
+		task.updateUI = gui.update;
+		//	define task.end
+		task.end=pass;
+		//	start task
+		onTaskConnect();
+		if(task.start)task.start();
+	}
+
+	function connectToTaskHTTP(){
+		
+		function urlWithQuery(url){
+			var i=url.indexOf('?');
+			if(i===-1)return url+'?callback=recv&';
+			if(i===url.length-1 || url.endsWith('&'))return url+'callback=recv&';
+			return url+'&callback=recv&';
+		}
+
+		gui.action = function(data){
+			var msg=JSON.stringify(data);
+			var s=document.createElement('script');
+			s.src=task.location+'d='+encodeURIComponent(msg)+(typeof(state)==='undefined'?'':('&s='+encodeURIComponent(state)));
+			s.onerror=function(e){console.log("Error loading "+task.location,e)}
+			if(HEAD._taskscript){
+				s.onload=function(){
+					HEAD.removeChild(s);
+				};
+			}else{  //first message
+				HEAD._taskscript=true;
+				s.onload=function(){
+					HEAD.removeChild(s);
+					//check if task code is client-side 
+					if(task.onUserAction || task.userAction){
+						connectToTaskScript();
+					}
+				};
+			}
+			HEAD.appendChild(s);
+		}
+		
+		recv = function(data){
+			try{								//redirect
+				var url=new URL(data);
+				task.location=urlWithQuery(url.origin+url.pathname);
+				onTaskConnect();
+			}catch(e){							//parse task message
+				gui.update(data);
+			}
+		}
+
+		task.location=urlWithQuery(task.location);
+		onTaskConnect();
+
+	}
+
+	function connectToTaskWS(){
+		if("WebSocket" in window){
+			gui.action = function(data){
+				var msg=JSON.stringify(data);
+				ws.send(msg);
+			}
+			ws=new window.WebSocket(task.location);
+			ws.onerror=function(e){gui.update(null);gui.update({'error':'Cannot establish connection to '+task.location});};
+			ws.onopen=onTaskConnect;
+			ws.onclose=function(event){
+				var reason;
+				// See http://tools.ietf.org/html/rfc6455#section-7.4.1
+				if (event.code == 1000)
+					reason = "";
+				else if(event.code == 1001)
+					reason = "An endpoint is \"going away\", such as a server going down or a browser having navigated away from a page.";
+				else if(event.code == 1002)
+					reason = "An endpoint is terminating the connection due to a protocol error";
+				else if(event.code == 1003)
+					reason = "An endpoint is terminating the connection because it has received a type of data it cannot accept (e.g., an endpoint that understands only text data MAY send this if it receives a binary message).";
+				else if(event.code == 1004)
+					reason = "Reserved. The specific meaning might be defined in the future.";
+				else if(event.code == 1005)
+					reason = "No status code was actually present.";
+				else if(event.code == 1006)
+				   reason = "The connection was closed abnormally, e.g., without sending or receiving a Close control frame";
+				else if(event.code == 1007)
+					reason = "An endpoint is terminating the connection because it has received data within a message that was not consistent with the type of the message (e.g., non-UTF-8 [http://tools.ietf.org/html/rfc3629] data within a text message).";
+				else if(event.code == 1008)
+					reason = "An endpoint is terminating the connection because it has received a message that \"violates its policy\". This reason is given either if there is no other sutible reason, or if there is a need to hide specific details about the policy.";
+				else if(event.code == 1009)
+				   reason = "An endpoint is terminating the connection because it has received a message that is too big for it to process.";
+				else if(event.code == 1010) // Note that this status code is not used by the server, because it can fail the WebSocket handshake instead.
+					reason = "An endpoint (client) is terminating the connection because it has expected the server to negotiate one or more extension, but the server didn't return them in the response message of the WebSocket handshake. <br /> Specifically, the extensions that are needed are: " + event.reason;
+				else if(event.code == 1011)
+					reason = "A server is terminating the connection because it encountered an unexpected condition that prevented it from fulfilling the request.";
+				else if(event.code == 1015)
+					reason = "The connection was closed due to a failure to perform a TLS handshake (e.g., the server certificate can't be verified).";
+				else
+					reason = "Unknown reason";
+				console.log('Connection closed. '+reason);
+				//gui.update({'error':'Connection closed. '+reason});
+				//gui.update(['Connection closed.']);
+			};
+			ws.onmessage=function(msg){
+				gui.update(JSON.parse(msg.data));
+			};
+		}else{
+			gui.update(null);
+			gui.update([{'@Error':'Your browser does not support websockets. Please use a modern browser to run this application.'}]);
+		}
+	}
+
+	//////////////////////////////////////////////////////////////////////////////
+	
 	return {
-		// OPTIONS:OPTIONS,
-		// e:setOption,
 		init:init,
-		onTaskConnect:onTaskConnect,
-		update:processData
+		update:update
 	}
 })();
 
