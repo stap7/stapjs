@@ -2,22 +2,26 @@
 	
 TODO:
 	next:
+		eT:2,3
 		logging options (console, volunteerscience, function call or hook, url w params)
 		clean up (e.g. get rid of unused helper functions)
 	high priority:
 	bugs:
-		call onEdit after editable element has been updated (even tho it's from task-side)
+		call onEdit after editable element has been updated (even tho it's from task-side; this may be very important for playback)
+			current problem is that it'd be an infinite loop to call onEdit from processElement, because onEdit calls processElement
+			
 		account for vertical progress bars for tics, clicks
 		cancel one tween when starting a new one
 		scroll:0 doesn't work on maindiv
 	features:
-		x of N number format
-		options ., ins, @
-		scrollH (including autoscroll)
+		number:
+			x of N number format
+		general:
+			ins, $
+			scrollH (including autoscroll)
+			esu
 		path options
 		ani options
-		esu
-		table
 	futureproof:
 		account for multi-touch, e.g.
 			two irrespective mouseups can occur which would mess with select:.5
@@ -108,6 +112,7 @@ function load(urls, callback, onerror, type){
 		catch(e){
 			console.log('Not sure how to handle '+url+'.\nWill try to add as <style>...');
 			fileref=document.createElement("style");
+			fileref.innerHTML=url;
 			HEAD.appendChild(fileref);
 		}
 		onload();
@@ -139,6 +144,50 @@ function logline(direction,data){	//TODO: account for diff ways of logging/savin
 	console.log((new Date()).getTime()+'\t'+direction+'\t'+JSON.stringify(data));
 }
 
+var S={
+	clear:null,
+	startTime:'S',
+	waitTime:'W',
+	animationTime:'T',
+	//receipts
+	receipt:'R',
+	onRecieve:1,
+	onEdit:2,
+	onComplete:4,
+	//buttons
+	button:function(name,props){props=props||{};props['@'+name]=false;return props;},
+	buttons:-1,
+	holddown:0,
+	radio:1,
+	checkboxes:2,
+	//events
+	event:{
+		load:0,
+		unload:1,
+		// focus:10,
+		// blur:11,
+		// scroll:12,
+		// resize:13,
+		// collision:14,
+		// select:20,
+		// copy:21,
+		// cut:22,
+		// paste:23,
+		keypress:30,
+		keypress:30,
+		keydown:31,
+		keyup:32,
+		click:40,
+		dblclick:41,
+		mousedown:42,
+		mouseup:43,
+		mousemove:44,
+		mouseenter:45,
+		mouseleave:46,
+		mouseover:47,
+		mouseout:48
+	}
+};
 
 var gui=(function(){
 
@@ -146,7 +195,7 @@ var gui=(function(){
 	// constants
 	var STAPCSS = "https://rawgit.com/vdv7/stapjs/master/stap.css";
 	// var STAPCSS = "stapjs/stap.css";
-	var OPTIONS=new Set([".","S","T","R","onsubedit","patronym"]),
+	var OPTIONS=new Set([".","S","W","T","R","onsubedit","patronym"]),
 		TYPES=new Set([]);
 
 	var REQUIRED={
@@ -163,14 +212,15 @@ var gui=(function(){
 		"pwd":"https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.3.2/sha256.min.js",
 	};
 
-	var ANIMATABLE={'x':'left','y':'top','w':'width','h':'height','r':'borderRadius','bg':'backgroundColor','bd':'borderStyle','bdw':'borderWidth','bdc':'borderColor','pad':'padding','col':'color','rot':'rotation'};
-
 	var COMPATIBLE=Object.withDefault(EMPTYSET,{
 			path:new Set(['string','object']),
 			table:new Set(['object']),
+			tableRow:new Set(['object']),
 		});
 
 	var COLOROPTIONS=new Set(['bg','col','bdc']);
+
+	var ANIMATABLE={'x':'left','y':'top','w':'width','h':'height','r':'borderRadius','bg':'backgroundColor','bd':'borderStyle','bdw':'borderWidth','bdc':'borderColor','pad':'padding','col':'color','rot':'rotation'};
 
 	var EASE={0:'Power0',1:'Power1',2:'Power2',3:'Power3',4:'Power4',back:'Back',elastic:'Elastic',bounce:'Bounce'};
 
@@ -219,9 +269,6 @@ var gui=(function(){
 	//////////////////////////////////////////////////////////////////////////////
 	// for arrow option (path elements)
 	function initMarkers(){	//create marker definitions
-		var style = document.createElement("style");
-		style.appendChild(document.createTextNode(""));// WebKit hack
-		document.head.appendChild(style);
 		markerdefs=document.body.appendChild(document.createElementNS(SVGNS,'svg')).appendChild(document.createElementNS(SVGNS,'defs'));
 		markerdefs.parentElement.style.height='0px';
 	}
@@ -330,50 +377,46 @@ var gui=(function(){
 			}
 		}
 	}
-
+	
+	//////////////////////////////////////////////////////////////////////////////
+	// for table with header
+	function floatRow(){
+		var translate = "translate(0,"+(this.scrollTop-1)+"px)";
+		var p=this.firstChild.querySelectorAll('.main');
+		for(var i in p)if(p[i] && p[i].style)p[i].style.transform = translate;
+	}
 
 	//////////////////////////////////////////////////////////////////////////////
 
 	function ums(){return (new Date()).getTime()-startTime;}
 	
-	function onEdit(element,elementid,parent){
-		if(element._prop.onedit!==undefined){
-			let val,opt;
-			if(element._prop.onedit && element._prop.onedit.constructor===Array && element._prop.onedit[1].constructor===Object){
-				val=element._prop.onedit[0];
-				opt=element._prop.onedit[1];
-			}else if(element._prop.onedit && element._prop.onedit.constructor===Object){
-				opt=element._prop.onedit;
-			}else{
-				val=element._prop.onedit;
-				opt={};
-			}
-			processElement(parent,elementid,val,opt,{});
+	function changeElement(element,parent,valopt){
+		if(valopt.constructor===Object){	//get val,opt
+			var val=valopt['@'];
+			processElement(parent,element,val===undefined?{}:val,valopt);
+		}else{
+			processElement(parent,element,valopt,{});
 		}
-		if(parent._prop.onsubedit!==undefined){
-			let val,opt;
-			if(parent._prop.onsubedit && parent._prop.onsubedit.constructor===Array && parent._prop.onsubedit[1].constructor===Object){
-				val=parent._prop.onsubedit[0];
-				opt=parent._prop.onsubedit[1];
-			}else if(parent._prop.onsubedit && parent._prop.onsubedit.constructor===Object){
-				opt=parent._prop.onsubedit;
-			}else{
-				val=parent._prop.onsubedit;
-				opt={};
-			}
-			processElement(parent._parentState,parent.id||getElementIndex(parent.parentElement),val,opt,{});
+	}
+	
+	function onEdit(element,parent){ //TODO: account for maindiv
+		if(element._prop.onedit!==undefined){
+			changeElement(element,parent,element._prop.onedit);
+		}
+		if(parent && parent._prop.onsubedit!==undefined){
+			changeElement(parent,parent._parentContainer,parent._prop.onsubedit);
 		}
 	}
 	
 	function sendAction(element,val){
 		if(typeof(element)==='object'){
 			var elementid=element.id || element._getIndex(),
-				parent=element._parentState;
-			onEdit(element,elementid,parent);
+				parent=element._parentContainer;
+			if(typeof(val)!=='object')onEdit(element,parent);
 			var fullname=[elementid];
 			for(var i=0;parent!==maindiv && i<(element._prop.patronym||0);++i){
 				fullname.push(parent.id || parent._getIndex());
-				parent=parent._parentState;
+				parent=parent._parentContainer;
 			}
 			element=fullname.length>1?fullname:elementid;
 		}
@@ -427,36 +470,44 @@ var gui=(function(){
 		if(container.parentElement._type==='table'){ //tableRow
 			type='tableRow';
 			c=addDiv(container,[type,'lvl_'+level,'id_'+key,'main'],'tr');
+			// c=addDiv(container,[type,'lvl_'+level,'id_'+key,'main'],'div');
+			// c.style.display='table-row';
+			//testing: two lines above
 			c._frame=c;
-			c._parentState=container.parentElement;
+			c._parentContainer=container.parentElement;
 			c._realkey=key;
 			if(typeof(key)==='string'){
 				c.id=key;
-				c._parentState._childmap[key]=c;
+				c._parentContainer._childmap[key]=c;
 			}
 			c._key=addDiv(c,[type,'lvl_'+level,'id_'+key,'key'],'td');
 			c._content=c;
 		}else{                                       //everything else
 			if(container._type==='tableRow'){
-				//type='tableCell';
 				cf=addDiv(container,[type,'lvl_'+level,'id_'+key,'frame'],'td');
-				cf._parentState=container;
+				// cf=addDiv(container,[type,'lvl_'+level,'id_'+key,'frame'],'div');
+				// cf.style.display='table-cell';
+				//testing: two lines above
+				cf._parentContainer=container;
 			}else{
 				cf=addDiv(container,[type,'lvl_'+level,'id_'+key,'frame']);
-				cf._parentState=container.parentElement;
+				cf._parentContainer=container.parentElement;
 			}
 			c=addDiv(cf,[type,'lvl_'+level,'id_'+key,'main']);
 			cf._main=c;
 			c._frame=cf;
-			c._parentState=cf._parentState;
+			c._parentContainer=cf._parentContainer;
 			c._realkey=key;
 			if(typeof(key)==='string'){
 				c.id=key;
-				c._parentState._childmap[key]=c;
+				c._parentContainer._childmap[key]=c;
 			}
 			c._key=addDiv(c,[type,'lvl_'+level,'id_'+key,'key']);
 			cs=addDiv(c,[type,'lvl_'+level,'id_'+key,'sep']);
-			c._content=addDiv(c,[type,'lvl_'+level,'id_'+key,'content'],type==='table'?'table':'div');
+			// c._content=addDiv(c,[type,'lvl_'+level,'id_'+key,'content'],type==='table'?'table':'div');
+			c._content=addDiv(c,[type,'lvl_'+level,'id_'+key,'content'],'div');
+			//if(type==='table')c._content.style.display='table';
+			//testing: two lines above
 		}
 		c._main=c;
 		c._type=type;
@@ -506,7 +557,7 @@ var gui=(function(){
 	}
 
 	function processElement(parent,key,val,options){
-		// console.log(parent,key,val,options);
+		//console.log('------\n',parent,key,val,options,'\n==============');
 		if(options.R&1)sendAction(key,{R:1});
 		if(options.S){		//optional delay
 			var delay=waitTime(options.S);
@@ -514,15 +565,25 @@ var gui=(function(){
 			setTimeout(function(){processElement(parent,key,val,options);},delay);
 			return;
 		}
-		var child,typeofval,displaykey,optKey;
-		if(typeof(key)==='number'){
+		if(options.W){		//optional delay
+			var delay=options.W;
+			delete options.W;
+			setTimeout(function(){processElement(parent,key,val,options);},delay);
+			return;
+		}
+		var child;
+		if(key && key._type){
+			child=key;
+		}else if(typeof(key)==='number'){
 			child=parent._content.children[key];	//find frame by numeric key
 			if(child.classList.contains('frame'))child=child.children[0];		//get main div of child
-		}else
+		}else{
 			child=parent._childmap[key];
+		}
 		if(val===null){							//remove element
 			if(child)child._remove();
 		}else{
+			var typeofval,optKey;
 			if(child===undefined){				//new element
 				typeofval=options.type;
 				if(!typeofval){
@@ -585,15 +646,46 @@ var gui=(function(){
 					val=undefined;
 					if(options.R&4)aniopt.onComplete=function(){sendAction(child,{R:4});};
 					TweenLite.to(curopt,animate,aniopt);
+					val=undefined;
 				}
 			}
 			Object.assign(child._options,options);
 			for(optKey in options)
 				updateOption(child,optKey,options[optKey]);
-			if(val!==undefined)
+			if(val!==undefined){
 				child._setValue(val);
+				//onEdit(child,parent);
+			}
 			if(child._options.scroll&2)
 				child._content.scrollTop=child._content.scrollHeight;
+		}
+	}
+	
+	function processProperties(props,parent){
+		var key,val,options={};
+		for(var k in props){
+			if(k.startsWith('@')){
+				if(props[k].constructor!==Object)
+					val=props[k];
+				key=k.substr(1);
+				if(key==='')key=undefined;
+			}else if(!key && !val && k.startsWith('#')){
+				if(!key && !val){
+					if(props[k].constructor!==Object)
+						val=props[k];
+					key=parseInt(k.substr(1));
+				}
+			}else if(!key && !val && k.constructor===Number){
+				if(props[k].constructor!==Object)
+					val=props[k];
+				key=k;
+			}else options[k]=props[k];
+		}
+		if(parent){
+			processElement(parent,key,val,options);
+		}else{
+			var e=document.getElementById(key);
+			if(e)processElement(e._parentContainer,e,val,options);
 		}
 	}
 
@@ -674,7 +766,7 @@ var gui=(function(){
 				}
 			},
 			bg:function(c,v){c._content.style.backgroundColor=v;},
-			col:function(c,v){c._content.style.color=v;},
+			c:function(c,v){c._content.style.color=v;},
 			fnt:function(c,v){c._content.style.font=v;},
 			bd:function(c,v){c._content.style.borderStyle=v;},
 			bdc:function(c,v){c._content.style.borderColor=v;},
@@ -815,11 +907,11 @@ var gui=(function(){
 						c._content.onkeypress=function(e){if(e.keyCode==13){c._sendText(e);return false;}};
 					}
 					if(v&2){ //on blur
-						c._content.onblur=this._sendText;
+						c._content.onblur=c._sendText;
 					}
 					if(v&4){ //on any change
 						//TODO: this will conflict with v&1, specifically in that enter key will be allowed
-						c._content.oninput=this._sendText;
+						c._content.oninput=c._sendText;
 					}
 				}else{
 					c._content.setAttribute('contenteditable',false);
@@ -847,10 +939,10 @@ var gui=(function(){
 					c.onmouseup=function(){sendAction(c,false);};
 				}else if(v==1){
 					c.setAttribute('_select','1');
-					c._prop.selectContainer=c._parentState;
+					c._prop.selectContainer=c._parentContainer;
 					if(c._options.select===undefined){
 						while(c._prop.selectContainer._options.select===undefined){
-							c._prop.selectContainer=c._prop.selectContainer._parentState;
+							c._prop.selectContainer=c._prop.selectContainer._parentContainer;
 						}
 					}
 					c._prop.selectContainer._prop.selectedDiv=undefined;
@@ -901,7 +993,11 @@ var gui=(function(){
 		},
 		path:{},
 		table:new Proxy({
-			head:function(c,v){c.setAttribute('_head',v);}
+			head:function(c,v){
+				c.setAttribute('_head',v);
+				if(v)c._content.addEventListener('scroll',floatRow);
+				
+			}
 		},{get:spreadOptionsToChildren}),
 		tableRow:new Proxy({},{get:spreadOptionsToChildren}),
 		tableCell:new Proxy({},{get:spreadOptionsToChildren}),
@@ -909,31 +1005,13 @@ var gui=(function(){
 
 	setValue={
 		object:function(data){
-			var i,key,val,options;
+			var i,props;
 			for(i=0;i<data.length;++i){
-				key=undefined;
-				val=undefined;
-				options={};
+				props={};
 				if(data[i].constructor===Object){	//get key,val,opt
-					for(var k in data[i]){
-						if(k.startsWith('@')){
-							if(data[i][k].constructor!==Object)
-								val=data[i][k];
-							key=k.substr(1);
-						}else if(!key && !val && k.startsWith('#')){
-							if(!key && !val){
-								if(data[i][k].constructor!==Object)
-									val=data[i][k];
-								key=parseInt(k.substr(1));
-							}
-						}else if(!key && !val && k.constructor===Number){
-							if(data[i][k].constructor!==Object)
-								val=data[i][k];
-							key=k;
-						}else options[k]=data[i][k];
-					}
+					processProperties(data[i],this);
 				}else{
-					val=data[i];
+					processElement(this,undefined,data[i],{});
 				}
 				// if(key===true){  wildcard key processing
 					// for(key=this._content.childElementCount-1;key>=0;--key){
@@ -942,7 +1020,6 @@ var gui=(function(){
 				// }else{
 					// processElement(this,key,val,options);
 				// }
-				processElement(this,key,val,options);
 			}
 			updateContainers.delete(this);
 		},
@@ -1005,6 +1082,12 @@ var gui=(function(){
 			if(data.S){		//optional delay
 				var delay=waitTime(data.S);
 				delete data.S;
+				setTimeout(function(){update(data);},delay);
+				return;
+			}
+			if(data.W){		//optional delay
+				var delay=data.W;
+				delete data.W;
 				setTimeout(function(){update(data);},delay);
 				return;
 			}
@@ -1117,23 +1200,8 @@ var gui=(function(){
 				//taskInstructions(data.task);
 				delete data.task;
 			}
-			if('.' in data && data['.'].constructor===Array && data['.'].length>1){
-				let key=data['.'][0],e=document.getElementById(key);
-				if(e){
-					let val,options;
-					if(data['.'].length==2){
-						if(isObj(data['.'][1])){
-							options=data['.'][1];
-						}else{
-							val=data['.'][1];
-							options={};
-						}
-					}else{
-						val=data['.'][1];
-						options=data['.'][2];
-					}
-					processElement(e._parentState,key,val,options);
-				}
+			if('.' in data && data['.'].constructor===Object){
+				processProperties(data['.']);
 			}
 			// process other optional element directives
 			Object.assign(maindiv._options,data);
@@ -1147,12 +1215,16 @@ var gui=(function(){
 
 	//////////////////////////////////////////////////////////////////////////////
 	// init window and connect to task
-	
+
 	function init(){
 		//check and make sure basic stap.css template is loaded
 		var x=document.getElementsByTagName('link');
 		for(var i=0;i<x.length;++i){if(x[i].href.endsWith('stap.css'))break;}
 		if(i==x.length){load(STAPCSS,init);return;}
+		//add stylesheet to head
+		var style = document.createElement("style");
+		style.appendChild(document.createTextNode(""));// WebKit hack
+		HEAD.appendChild(style);
 		//create foundational element
 		document.body.parentElement._childmap={};
 		maindiv=addElement(document.body,'object',0,"__main__");
@@ -1255,38 +1327,7 @@ var gui=(function(){
 			ws.onerror=function(e){gui.update(null);gui.update({'error':'Cannot establish connection to '+task.location});};
 			ws.onopen=onTaskConnect;
 			ws.onclose=function(event){
-				var reason;
-				// See http://tools.ietf.org/html/rfc6455#section-7.4.1
-				if (event.code == 1000)
-					reason = "";
-				else if(event.code == 1001)
-					reason = "An endpoint is \"going away\", such as a server going down or a browser having navigated away from a page.";
-				else if(event.code == 1002)
-					reason = "An endpoint is terminating the connection due to a protocol error";
-				else if(event.code == 1003)
-					reason = "An endpoint is terminating the connection because it has received a type of data it cannot accept (e.g., an endpoint that understands only text data MAY send this if it receives a binary message).";
-				else if(event.code == 1004)
-					reason = "Reserved. The specific meaning might be defined in the future.";
-				else if(event.code == 1005)
-					reason = "No status code was actually present.";
-				else if(event.code == 1006)
-				   reason = "The connection was closed abnormally, e.g., without sending or receiving a Close control frame";
-				else if(event.code == 1007)
-					reason = "An endpoint is terminating the connection because it has received data within a message that was not consistent with the type of the message (e.g., non-UTF-8 [http://tools.ietf.org/html/rfc3629] data within a text message).";
-				else if(event.code == 1008)
-					reason = "An endpoint is terminating the connection because it has received a message that \"violates its policy\". This reason is given either if there is no other sutible reason, or if there is a need to hide specific details about the policy.";
-				else if(event.code == 1009)
-				   reason = "An endpoint is terminating the connection because it has received a message that is too big for it to process.";
-				else if(event.code == 1010) // Note that this status code is not used by the server, because it can fail the WebSocket handshake instead.
-					reason = "An endpoint (client) is terminating the connection because it has expected the server to negotiate one or more extension, but the server didn't return them in the response message of the WebSocket handshake. <br /> Specifically, the extensions that are needed are: " + event.reason;
-				else if(event.code == 1011)
-					reason = "A server is terminating the connection because it encountered an unexpected condition that prevented it from fulfilling the request.";
-				else if(event.code == 1015)
-					reason = "The connection was closed due to a failure to perform a TLS handshake (e.g., the server certificate can't be verified).";
-				else
-					reason = "Unknown reason";
-				console.log('Connection closed. '+reason);
-				//gui.update({'error':'Connection closed. '+reason});
+				console.log('Connection closed ('+event.code+').');
 				//gui.update(['Connection closed.']);
 			};
 			ws.onmessage=function(msg){
@@ -1302,7 +1343,11 @@ var gui=(function(){
 	
 	return {
 		init:init,
-		update:update
+		update:update,
+		edit:function(key,val,options){
+			var e=document.getElementById(key);
+			if(e)processElement(e._parentContainer,e,val,options||{});
+		}
 	}
 })();
 
