@@ -2,7 +2,7 @@
 	
 TODO:
 	next:
-		eT:2,3
+		eN -- keepNumeric doesnt work
 		logging options (console, volunteerscience, function call or hook, url w params)
 		clean up (e.g. get rid of unused helper functions)
 	high priority:
@@ -86,6 +86,12 @@ function select(e){
 	SELECTION.removeAllRanges();
 	SELECTION.addRange(RANGE);
 }
+function cursorToEnd(e){
+	RANGE.selectNodeContents(e);
+	RANGE.collapse(false);
+	SELECTION.removeAllRanges();
+	SELECTION.addRange(RANGE);
+}
 function inHead(type,thing,url){
 	var x=document.getElementsByTagName(type);
 	for(var i=0;i<x.length;++i){
@@ -137,7 +143,7 @@ function keepNumeric(e){
 //////////////////////////////////////////////////////////////////////////////
 
 
-var task={},recv,ws;
+var task={},recv,ws,callbackState;
 
 
 function logline(direction,data){	//TODO: account for diff ways of logging/saving file (e.g. GET at web addr, POST via ajax, call func)
@@ -218,9 +224,9 @@ var gui=(function(){
 			tableRow:new Set(['object']),
 		});
 
-	var COLOROPTIONS=new Set(['bg','col','bdc']);
+	var COLOROPTIONS=new Set(['bg','c','bdc']);
 
-	var ANIMATABLE={'x':'left','y':'top','w':'width','h':'height','r':'borderRadius','bg':'backgroundColor','bd':'borderStyle','bdw':'borderWidth','bdc':'borderColor','pad':'padding','col':'color','rot':'rotation'};
+	var ANIMATABLE={'x':'left','y':'top','w':'width','h':'height','r':'borderRadius','bg':'backgroundColor','bd':'borderStyle','bdw':'borderWidth','bdc':'borderColor','pad':'padding','c':'color','rot':'rotation'};
 
 	var EASE={0:'Power0',1:'Power1',2:'Power2',3:'Power3',4:'Power4',back:'Back',elastic:'Elastic',bounce:'Bounce'};
 
@@ -391,7 +397,7 @@ var gui=(function(){
 	function ums(){return (new Date()).getTime()-startTime;}
 	
 	function changeElement(element,parent,valopt){
-		if(valopt.constructor===Object){	//get val,opt
+		if(valopt && valopt.constructor===Object){	//get val,opt
 			var val=valopt['@'];
 			processElement(parent,element,val===undefined?{}:val,valopt);
 		}else{
@@ -568,7 +574,7 @@ var gui=(function(){
 		if(options.W){		//optional delay
 			var delay=options.W;
 			delete options.W;
-			setTimeout(function(){processElement(parent,key,val,options);},delay);
+			setTimeout(function(){processElement(parent,key,val,options);},delay*1000);
 			return;
 		}
 		var child;
@@ -588,7 +594,7 @@ var gui=(function(){
 				typeofval=options.type;
 				if(!typeofval){
 					if(val===undefined){ //default behavior (maybe think this through for boxes that arent buttons)
-						if(options.eT)val=""; // !!TODO: this was changed, should change it back or change stap.txt (currently specifying only options defaults to <<state>>)
+						if(options.eT)val=""; // !!TODO: this was changed, should change it back or change stap.txt (currently specifying only options defaults to <<container>>)
 						else if(options.eN)val=0;
 						else val=[];
 					} 
@@ -624,28 +630,36 @@ var gui=(function(){
 				}
 				//animate options
 				if(Object.keys(aniopt).length){
+					let ani={};
 					aniopt.onUpdate=function(options){
-						for(let optKey in options){
-							child._options[optKey]=options[optKey];
-							updateOption(child,optKey,options[optKey]);
-						}
+						if(document.body.contains(child))
+							for(let optKey in options){
+								child._options[optKey]=options[optKey];
+								updateOption(child,optKey,options[optKey]);
+							}
+						else
+							ani.ani.kill();
 					};
 					aniopt.onUpdateParams=[curopt];
 					if(options.R&4){
 						aniopt.onComplete=function(){sendAction(child,{R:4});};
 						delete options.R;
 					}
-					TweenLite.to(curopt,animate,aniopt);
+					ani.ani=TweenLite.to(curopt,animate,aniopt);
 				}
 				//animate value
 				if(typeof(val)==='number'){
+					let ani={};
 					let curopt={v:child._value};
 					let aniopt={v:val,onUpdate:function(o){
-							child._setValue(o.v);
+							if(document.body.contains(child))
+								child._setValue(o.v);
+							else
+								ani.ani.kill();
 						},onUpdateParams:[curopt]};
 					val=undefined;
 					if(options.R&4)aniopt.onComplete=function(){sendAction(child,{R:4});};
-					TweenLite.to(curopt,animate,aniopt);
+					ani.ani=TweenLite.to(curopt,animate,aniopt);
 					val=undefined;
 				}
 			}
@@ -706,7 +720,13 @@ var gui=(function(){
 			if(!c._prop.fmt)c._prop.fmt=self;
 			if(!c._prop.display)c._prop.display=function(){c._prop.valueSpan.innerHTML=c._prop.fmt(c._value);};
 		},
-		string:function(c){c._sendText=function(e){sendAction(e.target.parentElement,e.target.innerHTML);}},
+		string:function(c){
+			c._sendText=function(e){sendAction(e.target.parentElement,e.target.innerHTML);}
+			c._checkText=pass;
+			c._content.addEventListener('input',function(e){
+				c._checkText(e);
+			});
+		},
 		boolean:pass,
 		table:pass,
 		tableRow:pass,
@@ -733,7 +753,7 @@ var gui=(function(){
 				}
 			}
 	}
-	
+
 	setOption={
 		all:{
 			e:function(c,v){
@@ -882,7 +902,7 @@ var gui=(function(){
 							c._prop.valueSpan.focus();
 							setTimeout(()=>{select(c._prop.valueSpan)},1);
 						}
-						c._prop.valueSpan.addEventListener("keyup", keepNumeric, false);
+						// c._prop.valueSpan.addEventListener("keyup", keepNumeric, false);
 						if(v&1)c._prop.valueSpan.onkeypress=function(e){if(e.keyCode==13){sendAction(c,parseFloat(c._content.innerText));return false;}};
 						else c._prop.valueSpan.onkeypress=null;
 						if(v&2)c._prop.valueSpan.onblur=function(){sendAction(c,parseFloat(c._content.innerText));};
@@ -899,6 +919,28 @@ var gui=(function(){
 			patronym:function(c,v){c._prop.patronym=v;}
 		},
 		string:{
+			maxchars:function(c,v){
+				if(v){
+					c._checkText=function(e){
+						if(c._content.innerText.length>c._options.maxchars){
+							//e.preventDefault();
+							// c._content.focus();
+							//v=c._content.innerText.substr(0,c._options.maxchars);
+							// c._content.innerText='';
+							// c._content.innerText=v;
+							// c._content.setSelectionRange(1000,1000);
+							c._content.innerText=c._content.innerText.substr(0,c._options.maxchars);
+							// moveCursorToEnd(c._content);
+							setTimeout(function(){
+								cursorToEnd(c._content);
+								// c._content.selectionStart = c._content.selectionEnd = 100000;
+							},1);
+						}
+					};
+				}else{
+					c._checkText=pass;
+				}
+			},
 			eT:function(c,v){
 				if(v&1 || v&2 || v&4){
 					c._content.setAttribute('contenteditable',true);
@@ -1283,7 +1325,7 @@ var gui=(function(){
 		gui.action = function(data){
 			var msg=JSON.stringify(data);
 			var s=document.createElement('script');
-			s.src=task.location+'d='+encodeURIComponent(msg)+(typeof(state)==='undefined'?'':('&s='+encodeURIComponent(state)));
+			s.src=task.location+'d='+encodeURIComponent(msg)+(typeof(callbackState)==='undefined'?'':('&s='+encodeURIComponent(JSON.stringify(callbackState))));
 			s.onerror=function(e){console.log("Error loading "+task.location,e)}
 			if(HEAD._taskscript){
 				s.onload=function(){
@@ -1302,12 +1344,13 @@ var gui=(function(){
 			HEAD.appendChild(s);
 		}
 		
-		recv = function(data){
+		recv = function(data,state){
 			try{								//redirect
 				var url=new URL(data);
 				task.location=urlWithQuery(url.origin+url.pathname);
 				onTaskConnect();
 			}catch(e){							//parse task message
+				callbackState=state;
 				gui.update(data);
 			}
 		}
@@ -1352,4 +1395,3 @@ var gui=(function(){
 })();
 
 onload=gui.init;
-
