@@ -2,8 +2,9 @@
 	
 TODO:
 	next:
-		eN -- keepNumeric doesnt work
 		logging options (console, volunteerscience, function call or hook, url w params)
+				account for diff ways of logging/saving file (e.g. GET at web addr, POST via ajax, call func)
+		eN -- keepNumeric doesnt work
 		clean up (e.g. get rid of unused helper functions)
 	high priority:
 	bugs:
@@ -140,15 +141,18 @@ function keepNumeric(e){
 	var numtxt=e.target.innerText.match(/-?\.?\d+.*/)[0];
 	e.target.innerText=parseFloat(numtxt)+(numtxt.endsWith('.')?'.':'');
 }
+var VOLUNTEERSCIENCE=typeof(submit)!=='undefined' && location.host=="volunteerscience.com";
 //////////////////////////////////////////////////////////////////////////////
 
 
 var task={},recv,ws,callbackState;
 
+var logline;
+if(VOLUNTEERSCIENCE)
+	logline=function(direction,data){submit((new Date()).getTime()+'\t'+direction+'\t'+JSON.stringify(data));};
+else
+	logline=function(direction,data){console.log((new Date()).getTime()+'\t'+direction+'\t'+JSON.stringify(data));};
 
-function logline(direction,data){	//TODO: account for diff ways of logging/saving file (e.g. GET at web addr, POST via ajax, call func)
-	console.log((new Date()).getTime()+'\t'+direction+'\t'+JSON.stringify(data));
-}
 
 var S={
 	clear:null,
