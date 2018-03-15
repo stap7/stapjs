@@ -30,7 +30,7 @@ TODO:
 */
 
 //////////////////////////////////////////////////////////////////////////////
-// helper functions
+// helper functions/constants
 location.params={};location.search.substr(1).split("&").forEach(function(a){var b=a.split("=");location.params[b[0]]=b[1]});
 var EMPTYSET=new Set();
 var SELECTION = window.getSelection();
@@ -92,10 +92,10 @@ function cursorToEnd(e){
 	SELECTION.removeAllRanges();
 	SELECTION.addRange(RANGE);
 }
-function urlInDocument(type,thing,url){
+function urlInDocument(type,urlField,url){
 	var x=document.getElementsByTagName(type);
 	for(var i=0;i<x.length;++i){
-		if(x[i][thing]==url)return true;
+		if(x[i][urlField]==url)return true;
 	}
 }
 function load(urls, callback, onerror, type){
@@ -135,64 +135,53 @@ function keepNumeric(e){
 	var numtxt=e.target.innerText.match(/-?\.?\d+.*/)[0];
 	e.target.innerText=parseFloat(numtxt)+(numtxt.endsWith('.')?'.':'');
 }
-var VOLUNTEERSCIENCE=typeof(submit)!=='undefined' && location.host=="volunteerscience.com";
-var MLAB=false; //{apikey:'tyfJ0nEYHa4lkfzCPDRVVloyVYbPzPy_'};
-//var FIREBASE={apiKey:"AIzaSyCy-9xDsJ5_xYF0iBA9sLcPgmERFgd2JyM",authDomain:"stap-5a32d.firebaseapp.com",databaseURL:"https://stap-5a32d.firebaseio.com",projectId:"stap-5a32d",storageBucket:"stap-5a32d.appspot.com",messagingSenderId:"944783602225"};
 //////////////////////////////////////////////////////////////////////////////
 
 
-var task={},recv,ws,callbackState,logQ=[],stapMsgCnt=0;
 
-var logline;
-if(VOLUNTEERSCIENCE){
-	logline=function(direction,data){submit((new Date()).getTime()+'\t'+direction+'\t'+JSON.stringify(data));};
-}else if(typeof(firebase)!=='undefined'){
-	firebase.stapTask='tasks/'+(location.host+location.pathname).replace(/\/|\./g,'-');
-	console.log(firebase.stapTask);
-	firebase.stapSession='/'+firebase.stapTask+'/'+firebase.database().ref().child(firebase.stapTask).push().key;
+//////////////////////////////////////////////////////////////////////////////
+// Global vars
+var task={},ws,recv;
+//////////////////////////////////////////////////////////////////////////////
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+// Logging
+//    call logToConsole() to log all stap messages to console
+//    call logToFirebase() to log all stap messages via Firebase
+//    if this code is running via volunteerscience.com, logToVolunteerScience() is automatically called to log all stap messages via the volunteerscience API
+var logline=pass;
+function logToConsole(){
 	logline=function(direction,data){
-		firebase.database().ref(firebase.stapSession+'/'+(++stapMsgCnt)).set({[direction]:data});
-		//firebase.database().ref().update({[firebase.stapSession+'/'+(++stapMsgCnt)]:{[direction]:data}})
-	}
-}else if(MLAB && MLAB.apikey){
-	logline=function(direction,data){
-		clearTimeout(MLAB.sending);
-		logQ.push([direction,data]);
-		console.log(direction,data);
-		MLAB.sending=setTimeout(MLAB.send,200);
-	}
-	MLAB.url='https://api.mlab.com/api/1/databases/stap/collections/'+(location.host+location.pathname).replace(/\//g,'-')+'?apiKey='+MLAB.apikey;
-	MLAB.method='POST';
-	MLAB.bodyF=d=>JSON.stringify({s:d});
-	MLAB.send=function(){
-		if(logQ.length){
-			MLAB.body=MLAB.bodyF(logQ);
-			logQ=[];
-			fetch(MLAB.url,{
-				method:MLAB.method,
-				headers:{'Content-Type':'application/json'},
-				body:MLAB.body
-			}).then(response=>{
-				response.json().then(data=>{
-					if(response.ok){
-						console.log('######',MLAB.method,data);
-						if(MLAB.method==='POST'){
-							MLAB.url='https://api.mlab.com/api/1/databases/stap/collections/'+(location.host+location.pathname).replace(/\//g,'-')+'/'+data._id.$oid+'?apiKey='+MLAB.apikey;
-							MLAB.method='PUT';
-							MLAB.bodyF=d=>JSON.stringify({$push:{s:{$each:d}}});
-						}
-						return data;
-					}else{
-						console.error(response);
-					}
-				});
-			},e=>{
-				console.error(e)
-			});
-		}
+		console.log((new Date()).getTime()+'\t'+direction+'\t'+JSON.stringify(data));
 	};
-}else
-	logline=function(direction,data){console.log((new Date()).getTime()+'\t'+direction+'\t'+JSON.stringify(data));};
+}
+function logToFirebase(){
+	function _logToFirebase(){
+		firebase.stapTask='tasks/'+(location.host+location.pathname).replace(/\/|\./g,'-');
+		firebase.stapSession='/'+firebase.stapTask+'/'+firebase.database().ref().child(firebase.stapTask).push().key;
+		var stapMsgCnt=0;
+		logline=function(direction,data){
+			firebase.database().ref(firebase.stapSession+'/'+(++stapMsgCnt)).set({[direction]:data});
+		};
+	};
+	if(typeof(firebase)!=='undefined')_logToFirebase();
+	else load("https://www.gstatic.com/firebasejs/4.11.0/firebase.js",
+		function(){
+			firebase.initializeApp({apiKey:"AIzaSyCy-9xDsJ5_xYF0iBA9sLcPgmERFgd2JyM",authDomain:"stap-5a32d.firebaseapp.com",databaseURL:"https://stap-5a32d.firebaseio.com",projectId:"stap-5a32d",storageBucket:"stap-5a32d.appspot.com",messagingSenderId:"944783602225"});
+			_logToFirebase();
+		});
+}
+function logToVolunteerScience(){
+	//TODO: throw error if there's no submit
+	logline=function(direction,data){
+		submit((new Date()).getTime()+'\t'+direction+'\t'+JSON.stringify(data));
+	};
+}
+if(typeof(submit)!=='undefined'&&location.host==="volunteerscience.com")logToVolunteerScience();
+//////////////////////////////////////////////////////////////////////////////
+
 
 var S={
 	clear:null,
@@ -1239,7 +1228,7 @@ var gui=(function(){
 						quit=true;
 					}
 				}
-				if(quit)ws.close();
+				if(quit && ws)ws.close();
 				delete data.require;
 			}
 			if('client' in data){
@@ -1371,7 +1360,7 @@ var gui=(function(){
 		gui.action = function(data){
 			var msg=JSON.stringify(data);
 			var s=document.createElement('script');
-			s.src=task.location+'d='+encodeURIComponent(msg)+(typeof(callbackState)==='undefined'?'':('&s='+encodeURIComponent(JSON.stringify(callbackState))));
+			s.src=task.location+'d='+encodeURIComponent(msg)+(typeof(task.callbackState)==='undefined'?'':('&s='+encodeURIComponent(JSON.stringify(task.callbackState))));
 			s.onerror=function(e){console.log("Error loading "+task.location,e)}
 			if(document.head._taskscript){
 				s.onload=function(){
@@ -1396,7 +1385,7 @@ var gui=(function(){
 				task.location=urlWithQuery(url.origin+url.pathname);
 				onTaskConnect();
 			}catch(e){							//parse task message
-				callbackState=state;
+				task.callbackState=state;
 				gui.update(data);
 			}
 		}
@@ -1440,4 +1429,4 @@ var gui=(function(){
 	}
 })();
 
-onload=gui.init;
+window.addEventListener("load",gui.init);
