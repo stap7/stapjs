@@ -33,11 +33,10 @@ TODO:
 // helper functions
 location.params={};location.search.substr(1).split("&").forEach(function(a){var b=a.split("=");location.params[b[0]]=b[1]});
 var EMPTYSET=new Set();
-var HEAD = document.getElementsByTagName('head')[0];
 var SELECTION = window.getSelection();
 var RANGE = document.createRange();
-function pass(){}
-function self(o){return o;}
+function pass(){};
+function same(o){return o;}
 function round2(n,r){return (Math.round(n/r)*r);}
 function ceil2(n,r){return (Math.ceil(n/r)*r);}
 Date.prototype.toString=function(format){
@@ -93,23 +92,24 @@ function cursorToEnd(e){
 	SELECTION.removeAllRanges();
 	SELECTION.addRange(RANGE);
 }
-function inHead(type,thing,url){
+function urlInDocument(type,thing,url){
 	var x=document.getElementsByTagName(type);
 	for(var i=0;i<x.length;++i){
 		if(x[i][thing]==url)return true;
 	}
 }
 function load(urls, callback, onerror, type){
+	//TODO: if(url.constructor===Array) try one or the other
 	var url, onload, fileref;
 	if(urls.constructor===Array){url=urls[0];urls=urls.slice(1);}
 	else{url=urls;urls=[];}
 	if(urls.length)onload=function(){load(urls,callback,onerror,type);};
 	else onload=callback||pass;
-	if(url && (url.endsWith(".js")||type==='js') && !inHead('script','src',url)){       //if filename is a external JavaScript file
+	if(url && (url.endsWith(".js")||type==='js') && !urlInDocument('script','src',url)){       //if filename is a external JavaScript file
 		fileref=document.createElement('script');
 		fileref.setAttribute("type","text/javascript");
 		fileref.setAttribute("src", url);
-	}else if(url && (url.endsWith(".css")||type==='css') && !inHead('link','href',url)){ //if filename is an external CSS file
+	}else if(url && (url.endsWith(".css")||type==='css') && !urlInDocument('link','href',url)){ //if filename is an external CSS file
 		fileref=document.createElement("link");
 		fileref.setAttribute("rel", "stylesheet");
 		fileref.setAttribute("type", "text/css");
@@ -120,21 +120,15 @@ function load(urls, callback, onerror, type){
 			console.log('Not sure how to handle '+url+'.\nWill try to add as <style>...');
 			fileref=document.createElement("style");
 			fileref.innerHTML=url;
-			HEAD.appendChild(fileref);
+			document.head.appendChild(fileref);
 		}
 		onload();
 		return;
 	}
 	fileref.onreadystatechange=onload;
 	fileref.onload=onload;
-	fileref.onerror=onerror||pass;
-	HEAD.appendChild(fileref);
-}
-function isObj(o){return Object.prototype.toString.call(o)==="[object Object]";}
-function getElementIndex(c){
-	var i = 0;
-	while( (c = c.previousSibling) != null ) ++i;
-	return i;
+	fileref.onerror=onerror||function(e){console.error(e);onload();};
+	document.head.appendChild(fileref);
 }
 var SVGNS="http://www.w3.org/2000/svg";
 function keepNumeric(e){
@@ -142,17 +136,63 @@ function keepNumeric(e){
 	e.target.innerText=parseFloat(numtxt)+(numtxt.endsWith('.')?'.':'');
 }
 var VOLUNTEERSCIENCE=typeof(submit)!=='undefined' && location.host=="volunteerscience.com";
+var MLAB=false; //{apikey:'tyfJ0nEYHa4lkfzCPDRVVloyVYbPzPy_'};
+//var FIREBASE={apiKey:"AIzaSyCy-9xDsJ5_xYF0iBA9sLcPgmERFgd2JyM",authDomain:"stap-5a32d.firebaseapp.com",databaseURL:"https://stap-5a32d.firebaseio.com",projectId:"stap-5a32d",storageBucket:"stap-5a32d.appspot.com",messagingSenderId:"944783602225"};
 //////////////////////////////////////////////////////////////////////////////
 
 
-var task={},recv,ws,callbackState;
+var task={},recv,ws,callbackState,logQ=[],stapMsgCnt=0;
 
 var logline;
-if(VOLUNTEERSCIENCE)
+if(VOLUNTEERSCIENCE){
 	logline=function(direction,data){submit((new Date()).getTime()+'\t'+direction+'\t'+JSON.stringify(data));};
-else
+}else if(typeof(firebase)!=='undefined'){
+	firebase.stapTask='tasks/'+(location.host+location.pathname).replace(/\/|\./g,'-');
+	console.log(firebase.stapTask);
+	firebase.stapSession='/'+firebase.stapTask+'/'+firebase.database().ref().child(firebase.stapTask).push().key;
+	logline=function(direction,data){
+		firebase.database().ref(firebase.stapSession+'/'+(++stapMsgCnt)).set({[direction]:data});
+		//firebase.database().ref().update({[firebase.stapSession+'/'+(++stapMsgCnt)]:{[direction]:data}})
+	}
+}else if(MLAB && MLAB.apikey){
+	logline=function(direction,data){
+		clearTimeout(MLAB.sending);
+		logQ.push([direction,data]);
+		console.log(direction,data);
+		MLAB.sending=setTimeout(MLAB.send,200);
+	}
+	MLAB.url='https://api.mlab.com/api/1/databases/stap/collections/'+(location.host+location.pathname).replace(/\//g,'-')+'?apiKey='+MLAB.apikey;
+	MLAB.method='POST';
+	MLAB.bodyF=d=>JSON.stringify({s:d});
+	MLAB.send=function(){
+		if(logQ.length){
+			MLAB.body=MLAB.bodyF(logQ);
+			logQ=[];
+			fetch(MLAB.url,{
+				method:MLAB.method,
+				headers:{'Content-Type':'application/json'},
+				body:MLAB.body
+			}).then(response=>{
+				response.json().then(data=>{
+					if(response.ok){
+						console.log('######',MLAB.method,data);
+						if(MLAB.method==='POST'){
+							MLAB.url='https://api.mlab.com/api/1/databases/stap/collections/'+(location.host+location.pathname).replace(/\//g,'-')+'/'+data._id.$oid+'?apiKey='+MLAB.apikey;
+							MLAB.method='PUT';
+							MLAB.bodyF=d=>JSON.stringify({$push:{s:{$each:d}}});
+						}
+						return data;
+					}else{
+						console.error(response);
+					}
+				});
+			},e=>{
+				console.error(e)
+			});
+		}
+	};
+}else
 	logline=function(direction,data){console.log((new Date()).getTime()+'\t'+direction+'\t'+JSON.stringify(data));};
-
 
 var S={
 	clear:null,
@@ -529,7 +569,9 @@ var gui=(function(){
 		// c._hide=function(){cf.style.visibility='hidden';};
 		// c._unhide=function(){cf.style.visibility='visible';};
 		c._getIndex=function(){
-			return getElementIndex(c._frame);
+			var i=0,me=c._frame;
+			while( (me=me.previousSibling)!=null ) ++i;
+			return i;
 		}
 		c._clear=function(){
 			c._content.innerHTML='';
@@ -721,7 +763,7 @@ var gui=(function(){
 			if(!c._prop.min)c._prop.min=pass;
 			if(!c._prop.max)c._prop.max=pass;
 			if(!c._prop.rnd)c._prop.rnd=pass;
-			if(!c._prop.fmt)c._prop.fmt=self;
+			if(!c._prop.fmt)c._prop.fmt=same;
 			if(!c._prop.display)c._prop.display=function(){c._prop.valueSpan.innerHTML=c._prop.fmt(c._value);};
 		},
 		string:function(c){
@@ -882,7 +924,7 @@ var gui=(function(){
 						return new Date(x*1000).toString(v);
 					};
 				}else{
-					c._prop.fmt=self;
+					c._prop.fmt=same;
 				}
 				updateContainers.add(c);
 			},
@@ -1270,7 +1312,7 @@ var gui=(function(){
 		//add stylesheet to head
 		var style = document.createElement("style");
 		style.appendChild(document.createTextNode(""));// WebKit hack
-		HEAD.appendChild(style);
+		document.head.appendChild(style);
 		//create foundational element
 		document.body.parentElement._childmap={};
 		maindiv=addElement(document.body,'object',0,"__main__");
@@ -1331,21 +1373,21 @@ var gui=(function(){
 			var s=document.createElement('script');
 			s.src=task.location+'d='+encodeURIComponent(msg)+(typeof(callbackState)==='undefined'?'':('&s='+encodeURIComponent(JSON.stringify(callbackState))));
 			s.onerror=function(e){console.log("Error loading "+task.location,e)}
-			if(HEAD._taskscript){
+			if(document.head._taskscript){
 				s.onload=function(){
-					HEAD.removeChild(s);
+					document.head.removeChild(s);
 				};
 			}else{  //first message
-				HEAD._taskscript=true;
+				document.head._taskscript=true;
 				s.onload=function(){
-					HEAD.removeChild(s);
+					document.head.removeChild(s);
 					//check if task code is client-side 
 					if(task.onUserAction || task.userAction){
 						connectToTaskScript();
 					}
 				};
 			}
-			HEAD.appendChild(s);
+			document.head.appendChild(s);
 		}
 		
 		recv = function(data,state){
