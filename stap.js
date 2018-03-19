@@ -1,41 +1,23 @@
-/*base template for STAP visualization
-	
-TODO:
-	next:
-		logging options (console, volunteerscience, function call or hook, url w params)
-				account for diff ways of logging/saving file (e.g. GET at web addr, POST via ajax, call func)
-		eN -- keepNumeric doesnt work
-		clean up (e.g. get rid of unused helper functions)
-	high priority:
-	bugs:
-		call onEdit after editable element has been updated (even tho it's from task-side; this may be very important for playback)
-			current problem is that it'd be an infinite loop to call onEdit from processElement, because onEdit calls processElement
-			
-		account for vertical progress bars for tics, clicks
-		cancel one tween when starting a new one
-		scroll:0 doesn't work on maindiv
-	features:
-		number:
-			x of N number format
-		general:
-			ins, $
-			scrollH (including autoscroll)
-			esu
-		path options
-		ani options
-	futureproof:
-		account for multi-touch, e.g.
-			two irrespective mouseups can occur which would mess with select:.5
+/*base html5 template for STAP visualization
+
+
+	Logging data:
+		to enable logging to console, call logToConsole()
+		to enable logging to firebase, instantiate firebase, adn then call logToFirebase()
+		if this is running on volunteerscience.com, logging via volunteerscience API is automatically enabled
+		you can overload logline(direction,data) to set up custom logging of stap messages, for example:
+			logline=function(direction,data){fetch('http://myserver.com/log?helloworld',{method:'POST',body:JSON.stringify([direction,data]),headers:{'content-type':'application/json'}})};
 
 */
+
+
 
 //////////////////////////////////////////////////////////////////////////////
 // helper functions/constants
 location.params={};location.search.substr(1).split("&").forEach(function(a){var b=a.split("=");location.params[b[0]]=b[1]});
-var EMPTYSET=new Set();
 var SELECTION = window.getSelection();
 var RANGE = document.createRange();
-function pass(){};
+function pass(){}
 function same(o){return o;}
 function round2(n,r){return (Math.round(n/r)*r);}
 function ceil2(n,r){return (Math.ceil(n/r)*r);}
@@ -53,27 +35,10 @@ Date.prototype.toString=function(format){
 	if(format.includes("."))s+=(s.length?".":"")+threedigit(this.getUTCMilliseconds());
 	return s;
 };
+String.prototype.replaceAll=function(search,replacement){return this.split(search).join(replacement);};
 if(String.prototype.startsWith===undefined)String.prototype.startsWith=function(prefix){return this.slice(0,prefix.length)===prefix;};
 if(String.prototype.endsWith===undefined)String.prototype.endsWith=function(suffix){return this.slice(this.length-suffix.length)===suffix;};
-String.prototype.replaceAll=function(search,replacement){return this.split(search).join(replacement);};
-Object.withDefault=(defaultValue,o={})=>new Proxy(o,{get:(o,k)=>(k in o)?o[k]:defaultValue});
-function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
-  var angleInRadians = (angleInDegrees-90) * Math.PI / 180.0;
-  return {
-	x: centerX + (radius * Math.cos(angleInRadians)),
-	y: centerY + (radius * Math.sin(angleInRadians))
-  };
-}
-function describeArc(x, y, radius, startAngle, endAngle, start){
-	var startingPt = polarToCartesian(x, y, radius, endAngle);
-	var endingPt = polarToCartesian(x, y, radius, startAngle);
-	var arcSweep = endAngle - startAngle <= 180 ? "0" : "1";
-	var d = [
-		start?"M":"L", startingPt.x, startingPt.y, 
-		"A", radius, radius, 0, arcSweep, 0, endingPt.x, endingPt.y
-	].join(" ");
-	return d+' ';       
-}
+if(Object.assign===undefined)Object.assign=function(o,o2){for(var k in o2)o[k]=o2[k];return o};
 function objectify(o){
 	var r={};
 	for(var key in o)
@@ -163,9 +128,11 @@ function logToFirebase(){
 		firebase.stapSession='/'+firebase.stapTask+'/'+firebase.database().ref().child(firebase.stapTask).push().key;
 		var stapMsgCnt=0;
 		logline=function(direction,data){
-			firebase.database().ref(firebase.stapSession+'/'+(++stapMsgCnt)).set({[direction]:data});
+			var r={};
+			r[direction]=data;
+			firebase.database().ref(firebase.stapSession+'/'+(++stapMsgCnt)).set(r);
 		};
-	};
+	}
 	if(typeof(firebase)!=='undefined')_logToFirebase();
 	else load("https://www.gstatic.com/firebasejs/4.11.0/firebase.js",
 		function(){
@@ -183,7 +150,7 @@ if(typeof(submit)!=='undefined'&&location.host==="volunteerscience.com")logToVol
 //////////////////////////////////////////////////////////////////////////////
 
 
-var S={
+const S={
 	clear:null,
 	startTime:'S',
 	waitTime:'W',
@@ -212,7 +179,6 @@ var S={
 		// copy:21,
 		// cut:22,
 		// paste:23,
-		keypress:30,
 		keypress:30,
 		keydown:31,
 		keyup:32,
@@ -251,11 +217,11 @@ var gui=(function(){
 		"pwd":"https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.3.2/sha256.min.js",
 	};
 
-	var COMPATIBLE=Object.withDefault(EMPTYSET,{
+	var COMPATIBLE={
 			path:new Set(['string','object']),
 			table:new Set(['object']),
-			tableRow:new Set(['object']),
-		});
+			tableRow:new Set(['object'])
+		};
 
 	var COLOROPTIONS=new Set(['bg','c','bdc']);
 
@@ -459,9 +425,9 @@ var gui=(function(){
 			}
 			element=fullname.length>1?fullname:elementid;
 		}
-		var action=[ums(),element,val];
-		logline('<',action);
-		gui.action(action);
+		var time=ums();
+		logline('<',[time,element,val]);
+		gui.action(time,element,val);
 	}
 
 	var sendText={
@@ -601,13 +567,13 @@ var gui=(function(){
 		//console.log('------\n',parent,key,val,options,'\n==============');
 		if(options.R&1)sendAction(key,{R:1});
 		if(options.S){		//optional delay
-			var delay=waitTime(options.S);
+			let delay=waitTime(options.S);
 			delete options.S;
 			setTimeout(function(){processElement(parent,key,val,options);},delay);
 			return;
 		}
 		if(options.W){		//optional delay
-			var delay=options.W;
+			let delay=options.W;
 			delete options.W;
 			setTimeout(function(){processElement(parent,key,val,options);},delay*1000);
 			return;
@@ -642,7 +608,7 @@ var gui=(function(){
 						updateOption(child,optKey,parent._prop[optKey]);
 			}else{								//edit element
 				typeofval=options.type || ((val===undefined || val.constructor === Object)?'undefined':typeof(val));
-				if(typeofval!=='undefined' && child._type!==typeofval && !COMPATIBLE[child._type].has(typeofval)){
+				if(typeofval!=='undefined' && child._type!==typeofval && !(COMPATIBLE[child._type] && COMPATIBLE[child._type].has(typeofval))){
 					child._changeType(typeofval);
 					var allOptions=Object.assign({},parent._prop,child._options);
 					for(optKey in allOptions)
@@ -665,10 +631,10 @@ var gui=(function(){
 				}
 				//animate options
 				if(Object.keys(aniopt).length){
-					let ani={};
+					ani={};
 					aniopt.onUpdate=function(options){
 						if(document.body.contains(child))
-							for(let optKey in options){
+							for(var optKey in options){
 								child._options[optKey]=options[optKey];
 								updateOption(child,optKey,options[optKey]);
 							}
@@ -684,9 +650,9 @@ var gui=(function(){
 				}
 				//animate value
 				if(typeof(val)==='number'){
-					let ani={};
-					let curopt={v:child._value};
-					let aniopt={v:val,onUpdate:function(o){
+					ani={};
+					curopt={v:child._value};
+					aniopt={v:val,onUpdate:function(o){
 							if(document.body.contains(child))
 								child._setValue(o.v);
 							else
@@ -739,7 +705,7 @@ var gui=(function(){
 	}
 
 	function updateOption(child,option,value){
-		(setOption.all[option]||setOption[child._type][option]||pass)(child,value);
+		(setOption.all[option]||setOption[child._type][option]||setOption[child._type].default||pass)(child,value,option);
 	}
 
 	initElement={
@@ -775,18 +741,15 @@ var gui=(function(){
 		}
 	}
 
-	function spreadOptionsToChildren(t,optKey){
-		return (optKey in t)?t[optKey]:
-			function(c,v){
-				c._prop[optKey]=v;
-				var child;
-				for(var i=0;i<c._content.childElementCount;++i){
-					child=c._content.children[i]._main;
-					if(child && child._options[optKey]===undefined){
-						(setOption[child._type][optKey]||pass)(child,v);
-					}
-				}
+	function spreadOptionsToChildren(c,v,option){
+		c._prop[option]=v;
+		var child;
+		for(var i=0;i<c._content.childElementCount;++i){
+			child=c._content.children[i]._main;
+			if(child && child._options[option]===undefined){
+				(setOption[child._type][option]||pass)(child,v);
 			}
+		}
 	}
 
 	setOption={
@@ -844,7 +807,9 @@ var gui=(function(){
 			h:function(c,v){c._content.style.height=v;},
 			rot:function(c,v){c._content.style.setProperty('transform','rotate('+v+'deg)');}
 		},
-		object:new Proxy({},{get:spreadOptionsToChildren}),
+		object:{
+			default:spreadOptionsToChildren
+		},
 		number:{
 			rnd:function(c,v){
 				if(c._prop.rndval!==v){
@@ -935,7 +900,7 @@ var gui=(function(){
 						c._prop.valueSpan.setAttribute('contenteditable',true);
 						if(!document.activeElement.getAttribute('contenteditable')){
 							c._prop.valueSpan.focus();
-							setTimeout(()=>{select(c._prop.valueSpan)},1);
+							setTimeout(function(){select(c._prop.valueSpan)},1);
 						}
 						// c._prop.valueSpan.addEventListener("keyup", keepNumeric, false);
 						if(v&1)c._prop.valueSpan.onkeypress=function(e){if(e.keyCode==13){sendAction(c,parseFloat(c._content.innerText));return false;}};
@@ -1069,15 +1034,19 @@ var gui=(function(){
 			patronym:function(c,v){c._prop.patronym=v;}
 		},
 		path:{},
-		table:new Proxy({
+		table:{
 			head:function(c,v){
 				c.setAttribute('_head',v);
 				if(v)c._content.addEventListener('scroll',floatRow);
-				
-			}
-		},{get:spreadOptionsToChildren}),
-		tableRow:new Proxy({},{get:spreadOptionsToChildren}),
-		tableCell:new Proxy({},{get:spreadOptionsToChildren}),
+			},
+			default:spreadOptionsToChildren
+		},
+		tableRow:{
+			default:spreadOptionsToChildren
+		},
+		tableCell:{
+			default:spreadOptionsToChildren
+		}
 	}
 
 	setValue={
@@ -1157,13 +1126,13 @@ var gui=(function(){
 		}else if(typeof(data)==="object"){
 			if(data.R&1)sendAction(0,{R:1});
 			if(data.S){		//optional delay
-				var delay=waitTime(data.S);
+				let delay=waitTime(data.S);
 				delete data.S;
 				setTimeout(function(){update(data);},delay);
 				return;
 			}
 			if(data.W){		//optional delay
-				var delay=data.W;
+				let delay=data.W;
 				delete data.W;
 				setTimeout(function(){update(data);},delay);
 				return;
@@ -1176,7 +1145,7 @@ var gui=(function(){
 				for(var key in data.require){
 					if(key=='options'){
 						errors=[];
-						for(var i=0;i<data.require.options.length;++i){
+						for(let i=0;i<data.require.options.length;++i){
 							if(!OPTIONS.has(data.require.options[i]))
 								errors.push(data.require.options[i]);
 							else if(data.require.options[i] in REQUIRED)
@@ -1190,14 +1159,14 @@ var gui=(function(){
 							quit=true;
 						}
 					}else if(key=='events'){
-						errors=data.require.events.filter(x=>!(x in EVENTS));
+						errors=data.require.events.filter(function(x){return (x in EVENTS)});
 						if(errors.length){
 							sendAction(0,{error:'Sorry, I cannot handle the required event(s): '+errors});
 							document.write('ERROR: Cannot handle required task event(s): '+errors+'<br><br>');
 							quit=true;
 						}
 					}else if(key=='types'){
-						errors=data.require.types.filter(x=>!TYPES.has(x));
+						errors=data.require.types.filter(function(x){return !TYPES.has(x)});
 						if(errors.length){
 							sendAction(0,{error:'Sorry, I cannot handle the required type(s): '+errors});
 							document.write('ERROR: Cannot handle required task type(s): '+errors+'<br><br>');
@@ -1267,8 +1236,10 @@ var gui=(function(){
 				delete data.replace;
 			}
 			if('task' in data){
+				var cond;
 				for(var taskThing in data.task){
-					for(var cond of data.task[taskThing]){
+					for(var condi in data.task[taskThing]){
+						cond=data.task[taskThing][condi];
 						if(!(cond[0] in taskOptions))taskOptions[cond[0]]=[];
 						//if(!(taskThing in taskOptions[cond[0]]))taskOptions[cond[0]][taskThing]=[];
 						taskOptions[cond[0]].push(cond.length==2?['==',cond[1],taskThing]:[cond[1],cond[2],taskThing]);
@@ -1286,7 +1257,7 @@ var gui=(function(){
 				updateOption(maindiv,optKey,data[optKey]);
 			}
 		}
-		for(var element of updateContainers)element._setValue();
+		for(var i in updateContainers)updateContainers[i]._setValue();
 		if(maindiv._options.scroll&2)window.scrollTo(0,document.body.scrollHeight);
 	}
 
@@ -1313,12 +1284,13 @@ var gui=(function(){
 				OPTIONS.add(optKey);
 			TYPES.delete('all');
 		}
-		if(task.onUserAction || task.userAction){
+		if(task.userAction){
 			//if task code is client-side script...
 			connectToTaskScript();
-		}else if(task.location=(task.location || location.params.l)){
+		}else if(task.location || location.params.l){
 			// load url if one is supplied...
 			gui.update(['Loading...']);
+			task.location=task.location || location.params.l;
 			if(task.location.startsWith('ws://') || task.location.startsWith('wss://'))
 				connectToTaskWS();
 			else
@@ -1337,8 +1309,7 @@ var gui=(function(){
 
 	function connectToTaskScript(){
 		//	connect gui.action to task.userAction
-		if(task.onUserAction)gui.action = task.onUserAction;
-		else if(task.userAction)gui.action = task.userAction;
+		if(task.userAction)gui.action = task.userAction;
 		//	connect task.updateUI to gui.update;
 		task.updateUI = gui.update;
 		//	define task.end
@@ -1356,11 +1327,12 @@ var gui=(function(){
 			if(i===url.length-1 || url.endsWith('&'))return url+'callback=recv&';
 			return url+'&callback=recv&';
 		}
+		
+		function urijson(data){return encodeURIComponent(JSON.stringify(data));}
 
-		gui.action = function(data){
-			var msg=JSON.stringify(data);
+		gui.action = function(time,id,val){
 			var s=document.createElement('script');
-			s.src=task.location+'d='+encodeURIComponent(msg)+(typeof(task.callbackState)==='undefined'?'':('&s='+encodeURIComponent(JSON.stringify(task.callbackState))));
+			s.src=task.location+'d='+urijson([time,id,val])+(task.callbackState===undefined?'':('&s='+urijson(task.callbackState)));
 			s.onerror=function(e){console.log("Error loading "+task.location,e)}
 			if(document.head._taskscript){
 				s.onload=function(){
@@ -1371,7 +1343,7 @@ var gui=(function(){
 				s.onload=function(){
 					document.head.removeChild(s);
 					//check if task code is client-side 
-					if(task.onUserAction || task.userAction){
+					if(task.userAction){
 						connectToTaskScript();
 					}
 				};
@@ -1397,9 +1369,8 @@ var gui=(function(){
 
 	function connectToTaskWS(){
 		if("WebSocket" in window){
-			gui.action = function(data){
-				var msg=JSON.stringify(data);
-				ws.send(msg);
+			gui.action = function(time,id,val){
+				ws.send(JSON.stringify([time,id,val]));
 			}
 			ws=new window.WebSocket(task.location);
 			ws.onerror=function(e){gui.update(null);gui.update({'error':'Cannot establish connection to '+task.location});};
@@ -1420,6 +1391,9 @@ var gui=(function(){
 	//////////////////////////////////////////////////////////////////////////////
 	
 	return {
+		// m:maindiv,
+		R:REQUIRED,
+		O:OPTIONS,
 		init:init,
 		update:update,
 		edit:function(key,val,options){

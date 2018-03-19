@@ -1,13 +1,21 @@
 # stapjs
 JS library for STAP
 
+        var task = {
+            start: function(){
+                task.updateUI([ "Hello, World!" ]);
+            }
+        }
 
 
 <img src="https://raw.githubusercontent.com/vdv7/stap/master/pres/stap-icon.png" width=250 align=right>
 STAP (Simple Task-Actor Protocol) is a machine-readable format for specifying user-interface changes. 
-(more details on STAP may be found at https://github.com/vdv7/stap)
+
+More details on STAP may be found at https://github.com/vdv7/stap
 
 stapjs is a javascript library for interpreting STAP messages and displaying them in a web-browser.
+
+Sample tasks that employ stapjs may be found at https://github.com/vdv7/stap/tree/master/tasks/js
 
 
 ## If you are referencing stapjs from your webpage,
@@ -20,4 +28,3 @@ stapjs is a javascript library for interpreting STAP messages and displaying the
 
 * https://cdn.rawgit.com/vdv7/stapjs/BRANCH-ID/stap.js
 
-BRANCH-ID may be found above this readme, on the right-hand side (looks something like this: c4117e4).
