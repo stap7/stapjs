@@ -126,9 +126,9 @@ function logToFirebase(){
 	function _logToFirebase(){
 		firebase.stapTask='tasks/'+(location.host+location.pathname).replace(/\/|\./g,'-');
 		firebase.stapSession='/'+firebase.stapTask+'/'+firebase.database().ref().child(firebase.stapTask).push().key;
-		var stapMsgCnt=0;
+		var stapMsgCnt=-1;
 		logline=function(direction,data){
-			firebase.database().ref(firebase.stapSession+'/'+(++stapMsgCnt)+'/'+direction).set(data);
+			firebase.database().ref(firebase.stapSession+'/'+(++stapMsgCnt)+'/'+direction).set(JSON.stringify(data));
 		};
 	}
 	if(typeof(firebase)!=='undefined')_logToFirebase();
@@ -1216,7 +1216,7 @@ var gui=(function(){
 								},
 								'js');
 					}else if(data.client[i]=='userAgent'){
-						reply.userAgent=clientInformation.userAgent;
+						reply.userAgent=navigator.userAgent;
 					}
 				}
 				if(Object.keys(reply).length)
