@@ -128,9 +128,7 @@ function logToFirebase(){
 		firebase.stapSession='/'+firebase.stapTask+'/'+firebase.database().ref().child(firebase.stapTask).push().key;
 		var stapMsgCnt=0;
 		logline=function(direction,data){
-			var r={};
-			r[direction]=data;
-			firebase.database().ref(firebase.stapSession+'/'+(++stapMsgCnt)).set(r);
+			firebase.database().ref(firebase.stapSession+'/'+(++stapMsgCnt)+'/'+direction).set(data);
 		};
 	}
 	if(typeof(firebase)!=='undefined')_logToFirebase();
