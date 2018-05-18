@@ -1,9 +1,12 @@
-/*base html5 template for STAP visualization
+/*base html5 template for STAP (v7.10) visualization
+
+	What is STAP? 
+		http://vdv7.github.io/stap/
 
 
 	Logging data:
 		to enable logging to console, call logToConsole()
-		to enable logging to firebase, instantiate firebase, adn then call logToFirebase()
+		to enable logging to firebase, instantiate firebase, and then call logToFirebase()
 		if this is running on volunteerscience.com, logging via volunteerscience API is automatically enabled
 		you can overload logline(direction,data) to set up custom logging of stap messages, for example:
 			logline=function(direction,data){fetch('http://myserver.com/log?helloworld',{method:'POST',body:JSON.stringify([direction,data]),headers:{'content-type':'application/json'}})};
@@ -11,17 +14,65 @@
 */
 
 
+"use strict";
 
 //////////////////////////////////////////////////////////////////////////////
-// helper functions/constants
+// Helper functions
 location.params={};location.search.substr(1).split("&").forEach(function(a){var b=a.split("=");location.params[b[0]]=b[1]});
-var SELECTION = window.getSelection();
-var RANGE = document.createRange();
-function pass(){}
-function same(o){return o;}
-function round2(n,r){return (Math.round(n/r)*r);}
-function ceil2(n,r){return (Math.ceil(n/r)*r);}
-Date.prototype.toString=function(format){
+function addCSS(css){document.head.appendChild(document.createElement("style")).innerHTML=css;}
+function findCSSrule(selector){
+	var rules;
+	for(var i=0;i<document.styleSheets.length;++i){
+		rules=document.styleSheets[i].rules||document.styleSheets[i].cssRules;
+		for(var x=0;x<rules.length;++x){
+			if(rules[x].selectorText==selector)
+				return rules[x];
+		}
+	}
+}
+function urlInDocument(type,urlField,url){
+	var x=document.getElementsByTagName(type);
+	for(var i=0;i<x.length;++i){
+		if(x[i][urlField]==url)return true;
+	}
+}
+function load(urls, callback, onerror, type){
+	var url, onload, fileref;
+	if(urls.constructor===Array){url=urls[0];urls=urls.slice(1);}
+	else{url=urls;urls=[];}
+	if(urls.length)onload=function(){load(urls,callback,onerror,type);};
+	else onload=callback||function(){};
+	if(url && (url.endsWith(".js")||type==='js')){       //if filename is a external JavaScript file
+		if(!urlInDocument('script','src',url)){
+			fileref=document.createElement('script');
+			fileref.setAttribute("type","text/javascript");
+			fileref.setAttribute("src", url);
+		}
+	}else if(url && (url.endsWith(".css")||type==='css')){ //if filename is an external CSS file
+		if(!urlInDocument('link','href',url)){
+			fileref=document.createElement("link");
+			fileref.setAttribute("rel", "stylesheet");
+			fileref.setAttribute("type", "text/css");
+			fileref.setAttribute("href", url);
+		}
+	}else{
+		try{eval(url);}
+		catch(e){
+			console.log('Not sure how to handle '+url+'.\nWill try to add as <style>...');
+			addCSS(url);
+		}
+		onload();
+		return;
+	}
+	if(fileref){
+		fileref.onreadystatechange=onload;
+		fileref.onload=onload;
+		fileref.onerror=onerror||function(e){console.error(e);onload();};
+		document.head.appendChild(fileref);
+	}
+}
+Math.round2=function(n,r){return Math.round(n/r)*r};
+Date.prototype.format=function(format){
 	function twodigit(x){return x<10?'0'+x:x;}
 	function threedigit(x){return x<10?'00'+x:(x<100?'0'+x:x);}
 	var s="";
@@ -35,88 +86,23 @@ Date.prototype.toString=function(format){
 	if(format.includes("."))s+=(s.length?".":"")+threedigit(this.getUTCMilliseconds());
 	return s;
 };
-String.prototype.replaceAll=function(search,replacement){return this.split(search).join(replacement);};
-if(String.prototype.startsWith===undefined)String.prototype.startsWith=function(prefix){return this.slice(0,prefix.length)===prefix;};
-if(String.prototype.endsWith===undefined)String.prototype.endsWith=function(suffix){return this.slice(this.length-suffix.length)===suffix;};
-if(Object.assign===undefined)Object.assign=function(o,o2){for(var k in o2)o[k]=o2[k];return o};
-function objectify(o){
-	var r={};
-	for(var key in o)
-		if(typeof(o[key])=='object')r[key]=objectify(o[key]);
-		else r[key]=o[key];
-	return r;
+HTMLElement.prototype._listen=function(event,fun){
+	if(!this._listeners)this._listeners={};
+	this.addEventListener(event,fun);
+	this._listeners[event]=fun;
 }
-function select(e){
-	RANGE.selectNodeContents(e);
-	SELECTION.removeAllRanges();
-	SELECTION.addRange(RANGE);
-}
-function cursorToEnd(e){
-	RANGE.selectNodeContents(e);
-	RANGE.collapse(false);
-	SELECTION.removeAllRanges();
-	SELECTION.addRange(RANGE);
-}
-function urlInDocument(type,urlField,url){
-	var x=document.getElementsByTagName(type);
-	for(var i=0;i<x.length;++i){
-		if(x[i][urlField]==url)return true;
-	}
-}
-function load(urls, callback, onerror, type){
-	//TODO: if(url.constructor===Array) try one or the other
-	var url, onload, fileref;
-	if(urls.constructor===Array){url=urls[0];urls=urls.slice(1);}
-	else{url=urls;urls=[];}
-	if(urls.length)onload=function(){load(urls,callback,onerror,type);};
-	else onload=callback||pass;
-	if(url && (url.endsWith(".js")||type==='js') && !urlInDocument('script','src',url)){       //if filename is a external JavaScript file
-		fileref=document.createElement('script');
-		fileref.setAttribute("type","text/javascript");
-		fileref.setAttribute("src", url);
-	}else if(url && (url.endsWith(".css")||type==='css') && !urlInDocument('link','href',url)){ //if filename is an external CSS file
-		fileref=document.createElement("link");
-		fileref.setAttribute("rel", "stylesheet");
-		fileref.setAttribute("type", "text/css");
-		fileref.setAttribute("href", url);
-	}else{
-		try{eval(url);}
-		catch(e){
-			console.log('Not sure how to handle '+url+'.\nWill try to add as <style>...');
-			fileref=document.createElement("style");
-			fileref.innerHTML=url;
-			document.head.appendChild(fileref);
+HTMLElement.prototype._removeListeners=function(){
+	if(this._listeners)
+		for(var event in this._listeners){
+			this.removeEventListener(event,this._listeners[event]);
 		}
-		onload();
-		return;
-	}
-	fileref.onreadystatechange=onload;
-	fileref.onload=onload;
-	fileref.onerror=onerror||function(e){console.error(e);onload();};
-	document.head.appendChild(fileref);
 }
-var SVGNS="http://www.w3.org/2000/svg";
-function keepNumeric(e){
-	var numtxt=e.target.innerText.match(/-?\.?\d+.*/)[0];
-	e.target.innerText=parseFloat(numtxt)+(numtxt.endsWith('.')?'.':'');
-}
-//////////////////////////////////////////////////////////////////////////////
-
-
-
-//////////////////////////////////////////////////////////////////////////////
-// Global vars
-var task={},ws,recv;
-//////////////////////////////////////////////////////////////////////////////
-
-
-
 //////////////////////////////////////////////////////////////////////////////
 // Logging
 //    call logToConsole() to log all stap messages to console
 //    call logToFirebase() to log all stap messages via Firebase
 //    if this code is running via volunteerscience.com, logToVolunteerScience() is automatically called to log all stap messages via the volunteerscience API
-var logline=pass;
+var logline=function(){};
 function logToConsole(){
 	logline=function(direction,data){
 		console.log((new Date()).getTime()+'\t'+direction+'\t'+JSON.stringify(data));
@@ -139,7 +125,6 @@ function logToFirebase(){
 		});
 }
 function logToVolunteerScience(){
-	//TODO: throw error if there's no submit
 	logline=function(direction,data){
 		submit((new Date()).getTime()+'\t'+direction+'\t'+JSON.stringify(data));
 	};
@@ -148,1175 +133,661 @@ if(typeof(submit)!=='undefined'&&location.host==="volunteerscience.com")logToVol
 //////////////////////////////////////////////////////////////////////////////
 
 
-const S={
-	clear:null,
-	startTime:'S',
-	waitTime:'W',
-	animationTime:'T',
-	//receipts
-	receipt:'R',
-	onRecieve:1,
-	onEdit:2,
-	onComplete:4,
-	//buttons
-	button:function(name,props){props=props||{};props['@'+name]=false;return props;},
-	buttons:-1,
-	holddown:0,
-	radio:1,
-	checkboxes:2,
-	//events
-	event:{
-		load:0,
-		unload:1,
-		// focus:10,
-		// blur:11,
-		// scroll:12,
-		// resize:13,
-		// collision:14,
-		// select:20,
-		// copy:21,
-		// cut:22,
-		// paste:23,
-		keypress:30,
-		keydown:31,
-		keyup:32,
-		click:40,
-		dblclick:41,
-		mousedown:42,
-		mouseup:43,
-		mousemove:44,
-		mouseenter:45,
-		mouseleave:46,
-		mouseover:47,
-		mouseout:48
+//////////////////////////////////////////////////////////////////////////////
+// Global vars
+var task={},ws,recv;
+//////////////////////////////////////////////////////////////////////////////
+
+
+function gui(data){
+	logline('>',data);
+	if(data===null){
+		gui.rootContainer._content.innerHTML='';
+		gui.rootContainer._childmap={};
+	}else if(data.constructor===Array){
+		gui.rootContainer._value(data);
+	}else if(typeof(data)==="object"){
+		if(data.U){		//optional delay
+			let delay=data.U-ums();
+			delete data.U;
+			setTimeout(function(){gui(data);},delay);
+			return;
+		}
+		if(data.T){		//optional delay
+			let delay=data.T*1000;
+			delete data.T;
+			setTimeout(function(){gui(data);},delay);
+			return;
+		}
+		if('$' in data){
+			gui.rootContainer._search(data);
+		}else{
+			//update display properties
+			gui.rootContainer._update(data);
+		}
+	}
+	//TODO: scrolling below
+	// if(rootContainer._options.scroll&2)window.scrollTo(0,document.body.scrollHeight);
+}
+
+gui.REQUIRED={
+	"S":[
+		"https://cdnjs.cloudflare.com/ajax/libs/gsap/1.20.4/TweenLite.min.js",
+		"https://cdnjs.cloudflare.com/ajax/libs/gsap/1.20.4/plugins/ColorPropsPlugin.min.js",
+		// "https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/plugins/CSSPlugin.min.js",
+		// "https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/plugins/AttrPlugin.min.js",
+		// "https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/plugins/TextPlugin.min.js",
+		"TweenLite.defaultEase = Linear.easeNone;"
+	],
+	"ease":"https://cdnjs.cloudflare.com/ajax/libs/gsap/1.20.4/easing/EasePack.min.js",
+	"easeout":"https://cdnjs.cloudflare.com/ajax/libs/gsap/1.20.4/easing/EasePack.min.js",
+};
+gui.OPTIONS=new Set(['Q','R','S','T','U']);
+gui.EVENTS=new Set();
+gui.COLOROPTIONS=new Set(['bg','c','bdc','f']);
+gui.ANIMATABLE=new Set(['x','y','w','h','r','bg','bd','bdw','bdc','pad','c','rot']);
+gui.EASE={0:'Power0',1:'Power1',2:'Power2',3:'Power3',4:'Power4',back:'Back',elastic:'Elastic',bounce:'Bounce'};
+gui.ums=function(){return (new Date()).getTime()-gui.startTime;};
+gui.sendAction=function(id,value){
+	var time=gui.ums();
+	logline('<',[time,id,value]);
+	gui.action(time,id,value);
+};
+gui.getType=function(prop){
+	if(prop.type!==undefined){
+		var type=prop.type.charAt(0).toUpperCase()+prop.type.slice(1)
+		delete prop.type;
+		if(type in gui)return gui[type];
+	}else if(prop.v!==undefined){
+		if(prop.v.constructor===Array)return gui.Container;
+		if(prop.v.constructor===String)return gui.Text;
+		if(prop.v.constructor===Number)return gui.Number;
+		if(prop.v.constructor===Boolean)return gui.Boolean;
 	}
 };
+gui.prop=x=>(x===null||x.constructor!==Object)?{v:x}:x;
+gui.getColor=v=>getComputedStyle(document.body).getPropertyValue('--color'+v);
+gui.color=v=>gui.getColor(v)?`var(--color${v})`:v;
 
-var gui=(function(){
-
-	//////////////////////////////////////////////////////////////////////////////
-	// constants
-	var STAPCSS = "https://rawgit.com/vdv7/stapjs/master/stap.css";
-	// var STAPCSS = "stapjs/stap.css";
-	var OPTIONS=new Set([".","S","W","T","R","onsubedit","patronym"]),
-		TYPES=new Set([]);
-
-	var REQUIRED={
-		"T":[
-			"https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/TweenLite.min.js",
-			// "https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/plugins/AttrPlugin.min.js",
-			// "https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/plugins/CSSPlugin.min.js",
-			"https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/plugins/ColorPropsPlugin.min.js",
-			"https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/plugins/TextPlugin.min.js",
-			"TweenLite.defaultEase = Linear.easeNone;"
-		],
-		"ease":"https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/easing/EasePack.min.js",
-		"easeout":"https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/easing/EasePack.min.js",
-		"pwd":"https://cdnjs.cloudflare.com/ajax/libs/js-sha256/0.3.2/sha256.min.js",
-	};
-
-	var COMPATIBLE={
-			path:new Set(['string','object']),
-			table:new Set(['object']),
-			tableRow:new Set(['object'])
-		};
-
-	var COLOROPTIONS=new Set(['bg','c','bdc']);
-
-	var ANIMATABLE={'x':'left','y':'top','w':'width','h':'height','r':'borderRadius','bg':'backgroundColor','bd':'borderStyle','bdw':'borderWidth','bdc':'borderColor','pad':'padding','c':'color','rot':'rotation'};
-
-	var EASE={0:'Power0',1:'Power1',2:'Power2',3:'Power3',4:'Power4',back:'Back',elastic:'Elastic',bounce:'Bounce'};
-
-
-	//////////////////////////////////////////////////////////////////////////////
-	// vars
-	var startTime,maindiv,ipAddress,markerdefs,stylesheet,tables=0,focused=false,
-		taskOptions={},msgTimeouts={},txtReplace={},
-		updateContainers=new Set();
-
-
-	//////////////////////////////////////////////////////////////////////////////
-	// for client:ip option
-	function gotip(o){
-		ipAddress=o.ip;
-		sendAction(0,{client:{ip:ipAddress}});
-	}
-
-	//////////////////////////////////////////////////////////////////////////////
-	// for replace option
-	function replaceShorthand(s){
-		for(var shorthand in txtReplace){
-			s=s.replaceAll(shorthand,txtReplace[shorthand]);
+//////////////////////////////////////////////////////////////////////////////
+// task (root-level container)
+gui.error=function(v){console.log('ERROR: '+v);}
+gui.require=function(require){
+	var errors,quit=false,errorScreen=[];
+	var TYPES=new Set([gui.Item,gui.Text,gui.Number,gui.Boolean,gui.Container]);
+	if(require.type){
+		errors=[];
+		for(var type of require.type){
+			type=type[0].toUpperCase()+type.substr(1);
+			if(gui[type])TYPES.add(gui[type]);
+			else errors.push(type);
 		}
-		return s;
-	}
-
-	//////////////////////////////////////////////////////////////////////////////
-	// for S option
-	function waitTime(t){return t-ums();}
-
-	//////////////////////////////////////////////////////////////////////////////
-	// for T option
-	function getEaseSpec(options){
-		var easeSpec=Linear.easeNone;
-		if(typeof(options)==='object'){
-			var ease=Linear;
-			if(options.ease)ease=window[EASE[options.ease]];
-			if(options.easeout==-1)easeSpec=ease.easeIn;
-			else if(options.easeout==0)easeSpec=ease.easeInOut;
-			else easeSpec=ease.easeOut;
+		if(errors.length){
+			gui.sendAction(0,{error:'Sorry, I cannot handle the required value type(s): '+errors});
+			errorScreen.push({id:'Cannot handle required value type(s)',v:errors});
+			quit=true;
 		}
-		return easeSpec;
+		delete require.type;
 	}
-
-	//////////////////////////////////////////////////////////////////////////////
-	// for arrow option (path elements)
-	function initMarkers(){	//create marker definitions
-		markerdefs=document.body.appendChild(document.createElementNS(SVGNS,'svg')).appendChild(document.createElementNS(SVGNS,'defs'));
-		markerdefs.parentElement.style.height='0px';
+	if(require.options){
+		errors=[];
+		//collect all options
+		for(var type of TYPES){
+			for(var propName of Object.getOwnPropertyNames(type.prototype)){
+				if(type.prototype[propName].call && !propName.startsWith("_"))
+					gui.OPTIONS.add(propName);
+			}
+		}
+		for(var propName of require.options){
+			if(!gui.OPTIONS.has(propName))
+				errors.push(propName);
+			else if(propName in gui.REQUIRED)
+				load(gui.REQUIRED[propName]);
+			// else if(!markerdefs && require.options[i].startsWith('end'))
+				// initMarkers();
+		}
+		if(errors.length){
+			gui.sendAction(0,{error:'Sorry, I cannot handle the required property option(s): '+errors});
+			errorScreen.push({id:'Cannot handle required property option(s)',v:errors});
+			quit=true;
+		}
+		delete require.options;
 	}
-
-	function getMarker(type,color){
-		var id,d;
-		if(type==='arrow' || type==='circle' || type==='square'){
-			if(!markerdefs)initMarkers();
-			id='marker.'+type+'.'+color;
-			if(!document.getElementById(id)){
-				var m=markerdefs.appendChild(document.createElementNS(SVGNS,'marker'));
-				m.id=id;
-				m.setAttribute('orient','auto');
-				m.setAttribute('markerUnits','strokeWidth');
-				m.setAttribute('refX','1');
-				if(type==='arrow'){
-					m.setAttribute('viewBox','0 0 10 10');
-					m.setAttribute('refY','5');
-					m.setAttribute('markerWidth','4');
-					m.setAttribute('markerHeight','3');
-					d=m.appendChild(document.createElementNS(SVGNS,'path'));
-					d.setAttribute('d',"M 0 0 L 10 5 L 0 10 z");
-				}else{
-					m.setAttribute('refY','1');
-					m.setAttribute('markerWidth','2');
-					m.setAttribute('markerHeight','2');
-					if(type==='square'){
-						d=m.appendChild(document.createElementNS(SVGNS,'rect'));
-						d.setAttribute('x','0');
-						d.setAttribute('y','0');
-						d.setAttribute('width','2');
-						d.setAttribute('height','2');
-					}else if(type==='circle'){
-						d=m.appendChild(document.createElementNS(SVGNS,'circle'));
-						d.setAttribute('cx','1');
-						d.setAttribute('cy','1');
-						d.setAttribute('r','1');
-					}
+	if(require.e){
+		//TODO: make sure EVENTS work and are extendable
+		errors=require.e.filter(x=>!gui.EVENTS.has(x));
+		if(errors.length){
+			gui.sendAction(0,{error:'Sorry, I cannot handle the required event(s): '+errors});
+			errorScreen.push({id:'Cannot handle required event(s)',v:errors});
+			quit=true;
+		}
+		delete require.e;
+	}
+	if(require.emphases){
+		errors=[];
+		for(var emp in require.emphases){
+			if(!gui.Item.prototype.hasOwnProperty(emp)){
+				errors.push(emp);
+			}else{
+				for(var i=1;i<=require.emphases[emp];++i){
+					if(!findCSSrule(`[${emp}="${i}"]`))
+						errors.push(`${emp}=${i}`);
 				}
-				d.setAttribute('fill',color);
 			}
-			id='url(#'+id+')';
 		}
-		else id='';
-		return id;
+		if(errors.length){
+			gui.sendAction(0,{error:'Sorry, I cannot handle required emphasis type(s): '+errors});
+			errorScreen.push({id:'Cannot handle required emphasis type(s)',v:errors});
+			quit=true;
+		}
+		delete require.emphases;
 	}
-
-	//////////////////////////////////////////////////////////////////////////////
-	// for min/max option display (numeric elements)
-	progressbar={
-		percent:function(c,v){
-			return (100*(v-c._prop.minval)/(c._prop.maxval-c._prop.minval))+'%';
-		},
-		init:function(c){
-			if(!c._progressbar){	//add progressbar
-				//c._content.innerHTML="";
-				c._content.classList.add("progress");
-				c._progressbar=addDiv(c._content,["progressbar"]);
-				// c._progressval=addDiv(c._content,["progressval"]);
-				if(parseInt(c._content.offsetWidth)>parseInt(c._content.offsetHeight)){
-					c._progressbar.style.height='100%';
-					c._prop.display=function(){
-						c._progressbar.style.width=progressbar.percent(c,c._value);
-						c._prop.valueSpan.innerHTML=c._prop.fmt(c._value);
-					}
+	if(require.colors){
+		errors=[];
+		for(var i=0;i<=require.colors;++i)
+			if(!gui.getColor(i))
+				errors.push(i);
+		if(errors.length){
+			gui.sendAction(0,{error:'Sorry, I cannot handle required color(s): '+errors});
+			errorScreen.push({id:'Cannot handle required color(s)',v:errors});
+			quit=true;
+		}
+		delete require.colors;
+	}
+	for(var propName in require){
+		if(!gui.OPTIONS.has(propName)){
+			gui.sendAction(0,{error:'Sorry, I cannot handle required option: '+propName});
+			errorScreen.push({id:'Cannot handle required property option(s)',v:[propName]});
+			quit=true;
+		}else if(propName in gui.REQUIRED){
+			load(gui.REQUIRED[propName]);
+		}// else if(!markerdefs && require.options[i].startsWith('end'))
+			// initMarkers();
+	}
+	if(errorScreen.length){
+		gui(null);
+		gui([{id:'Error',v:errorScreen}]);
+	}
+	if(quit && ws)ws.close();
+};
+gui.agent=function(v){
+	for(let i of v){
+		if(i==='url'){
+			gui.sendAction(0,{url:location});
+		}else if(i==='screen'){
+			function objectify(o){
+				var r={};
+				for(var key in o)
+					if(typeof(o[key])=='object')r[key]=objectify(o[key]);
+					else r[key]=o[key];
+				return r;
+			}
+			gui.sendAction(0,{'screen':objectify(screen)});
+		}else if(i==='userAgent'){
+			gui.sendAction(0,{'userAgent':navigator.userAgent});
+		}else if(i==='ip'){
+			load('https://api.ipify.org/?format=jsonp&callback=gui.rootContainer._sendAction',null,null,'js');
+		}
+	}
+}
+gui.template=function(v){load(v);}
+//////////////////////////////////////////////////////////////////////////////
+// prototypical gui item
+addCSS(`
+	:root {
+	  --color0: white;
+	  --colorHead: #f0f8f8;
+	  --colorBorder: #e8e8e8;
+	  --colorFalse: #f8f8f8;
+	  --colorTrue: lightblue;
+	  --color1: #444444;
+	  --color2: #0099ff;
+	  --color3: #ff9900;
+	  --color4: #99ff99;
+	  --color5: blue;
+	  --color6: red;
+	  --color7: green;
+	}
+	* {
+		white-space:pre-wrap;
+		font-size:14pt;
+		position:relative;
+		box-sizing:border-box;
+		font-size:98%;
+		z-index:10;
+		flex:0 0 auto;
+	}
+	body {
+		background-color:var(--color0);
+		color:var(--color1);
+		font-size:16pt;
+	}
+	div {
+		margin:2px;
+		margin-top:7px;
+	}
+	[title]:not([title=""]):before, [id]:not([title]):before {
+		border-bottom:solid 1px var(--colorBorder);
+		width:25%;
+		white-space:nowrap;
+		display:inline-block;
+	}
+	[title]:before {content: attr(title) ""}
+	[id]:not([title]):before {content: attr(id) ""}
+	[v] {margin-left:5px;overflow:auto}
+`);
+gui.Item=class{
+	constructor(prop,parent){
+		this._parent=parent;																//pointer to parent
+		this._initContent();																//make e.v, the element where content is displayed
+		this._setAttrC('v','');																//attribute _ signifies that this is the content (useful for CSS)
+		this._content._item=this._element._item=this._outterElement._item=this;
+		this._setAttr('type',this.type);													//attribute type signifies type (useful for CSS)
+		this._level=parent._level+1;
+		this._setAttr('level',this._level);													//attribute type signifies type (useful for CSS)
+		if(prop.id)this._setAttr('id',prop.id);												//set id
+		this._prop={};
+		this._update(prop);																	//refresh attributes based on self and parent property values
+		prop=this._getParentProps();
+		for(var propName in prop)
+			this._refreshProp(propName,prop[propName]);
+	}
+	_initContent(){
+		this._element=document.createElement('div');										//make element inside parent
+		this._content=this._element.appendChild(document.createElement('div'));				//e.v is a sub-element where content is displayed
+		this._parent._placeChildElement(this);
+	}
+	_getParentProps(){
+		//TODO: (optimization) store and return stored value based on whether this info is outdated (e.g. based on msg# or time)
+		var props={};
+		for(var parent=this._parent;parent;parent=parent._parent){
+			for(var propName in parent._prop)
+				if(!(propName in parent || propName in this._prop || propName in props))
+					props[propName]=parent._prop[propName];
+		}
+		return props;
+	}
+	_attr(attr){return this._element.getAttribute(attr);}
+	_setAttr(attr,val){
+		if(val===null)this._element.removeAttribute(attr);
+		else this._element.setAttribute(attr,val);
+	}
+	_attrC(attr){return this._content.getAttribute(attr);}
+	_setAttrC(attr,val){
+		if(val===null)this._content.removeAttribute(attr);
+		else this._content.setAttribute(attr,val);
+	}
+	_typeCheck(type){return (!type)||(type===this.constructor);}
+	_animatable(propName){return gui.ANIMATABLE.has(propName)}
+	_animate(prop){
+		var animate=prop.S,aniopt={},curopt={},e=this;
+		delete prop.S;
+		//check which properties an be animated
+		for(var optKey in prop){
+			if(this._animatable(optKey)){
+				if(gui.COLOROPTIONS.has(optKey)){
+					curopt[optKey]=this._prop[optKey]||this._getParentProps()[optKey]||'rgba(0,0,0,0)';
+					aniopt[optKey]=gui.getColor(prop[optKey])||prop[optKey];
 				}else{
-					c._progressbar.style.width='100%';
-					c._progressval.style.setProperty('transform','rotate(270deg)');
-					//c._progressval.style.setProperty('transform-origin','left top');
-					c._prop.display=function(){
-						c._progressbar.style.height=progressbar.percent(c,c._value);
-						c._prop.valueSpan.innerHTML=c._prop.fmt(c._value);
-					}
+					curopt[optKey]=this._prop[optKey]||this._getParentProps()[optKey]||0;
+					aniopt[optKey]=prop[optKey];
 				}
-				if(c._prop.eN)setOption.number.eN(c,c._prop.eN);
-			}
-			if(c._prop.rndval)progressbar.maketics(c);
-		},
-		getValue:function(e){
-			var rect=this.getBoundingClientRect();
-			var c=this.parentElement;
-			var v=c._prop.minval+(c._prop.maxval-c._prop.minval)*(e.pageX-rect.left)/rect.width;
-			c._setValue(c._prop.rndval?ceil2(v,c._prop.rndval):v);
-			sendAction(c,c._value);
-		},
-		maketics:function(c){
-			//instead of changing bg size, maybe i can change the following:
-			//	background: repeating-linear-gradient(to left, gray, gray 1px, white 1px, white 10%);
-			// if(isChrome && getComputedStyle(c).getPropertyValue('box-sizing')!=='content-box')
-				// c._content.style.backgroundSize="calc("+progressbar.percent(c,c._prop.rndval+c._prop.minval)+" + 1px) 1px";
-			// else
-				// c._content.style.backgroundSize=progressbar.percent(c,c._prop.rndval+c._prop.minval)+" 1px";
-			//c._prop.rnd=function(){c._value=round2(c._value,v);};
-			c._content.style.background="repeating-linear-gradient(to left, gray, gray 1px, white 2px, white "+progressbar.percent(c,c._prop.rndval+c._prop.minval)+")";
-		},
-		removetics:function(c){
-			c._content.style.backgroundSize="0px 0px";
-		},
-		destroy:function(c){
-			if(c._progressbar){
-				progressbar.removetics(c);
-				c._progressbar.remove();
-				c._content.classList.remove("progress");
-				c._prop.display=function(){c._prop.valueSpan.innerHTML=c._prop.fmt(c._value);};
-				c._progressbar=null;
+				delete prop[optKey];
 			}
 		}
-	}
-	
-	//////////////////////////////////////////////////////////////////////////////
-	// for table with header
-	function floatRow(){
-		var translate = "translate(0,"+(this.scrollTop-1)+"px)";
-		var p=this.firstChild.querySelectorAll('.main');
-		for(var i in p)if(p[i] && p[i].style)p[i].style.transform = translate;
-	}
-
-	//////////////////////////////////////////////////////////////////////////////
-
-	function ums(){return (new Date()).getTime()-startTime;}
-	
-	function changeElement(element,parent,valopt){
-		if(valopt && valopt.constructor===Object){	//get val,opt
-			var val=valopt['@'];
-			processElement(parent,element,val===undefined?{}:val,valopt);
-		}else{
-			processElement(parent,element,valopt,{});
+		//animate properties
+		if(Object.keys(aniopt).length){
+			var ani={};
+			aniopt.onUpdate=function(prop){
+				if(document.body.contains(e._element))e._update(prop);
+				else ani.ani.kill();
+			};
+			aniopt.onUpdateParams=[curopt];
+			if(prop.R&2){
+				aniopt.onComplete=function(){gui.sendAction(('Q' in prop)?prop.Q:(e._prop.id||e._getIndex()),[2]);};
+			}
+			ani.ani=TweenLite.to(curopt,animate,aniopt);
 		}
 	}
-	
-	function onEdit(element,parent){ //TODO: account for maindiv
-		if(element._prop.onedit!==undefined){
-			changeElement(element,parent,element._prop.onedit);
-		}
-		if(parent && parent._prop.onsubedit!==undefined){
-			changeElement(parent,parent._parentContainer,parent._prop.onsubedit);
+	_update(prop){
+		if(prop.R&1)gui.sendAction(('Q' in prop)?prop.Q:(this._prop.id||this._getIndex()),[1]);
+		if(prop.S)this._animate(prop);
+		Object.assign(this._prop,prop);
+		for(var propName in prop){
+			this._refreshProp(propName,prop[propName]);
+			if(prop[propName]===null)delete prop[propName];
 		}
 	}
-	
-	function sendAction(element,val){
-		if(typeof(element)==='object'){
-			var elementid=element.id || element._getIndex(),
-				parent=element._parentContainer;
-			if(typeof(val)!=='object')onEdit(element,parent);
+	_refreshProp(propName,propValue){
+		if(propName in this)this[propName](propValue);
+		else this._default(propValue,propName);
+	}
+	_value(v){
+		this._prop.v=v;
+		this.v(v);
+	}
+	_default(){}
+	_getIndex(){
+		var i=0,e=this._outterElement;
+		while((e=e.previousElementSibling)!==null)++i;
+		return i;
+	}
+	_match(query){
+		if(query.constructor===String){
+			if(this._prop.id===query)return true;
+			if(this._prop['#']&&this._prop['#'].indexOf(query)>-1)return true;
+		}else if(query.constructor===Object){
+			for(var q in query)
+				if(q==='type'){
+					if(query.type!==this.type)return false;
+				}else{
+					if(query[q]!==this._prop[q])return false;
+				}
+			return true;
+		}
+	}
+	_sendAction(v){
+		var elementid=this._prop.id||this._getIndex();
+		if(this._patronym>0){
 			var fullname=[elementid];
-			for(var i=0;parent!==maindiv && i<(element._prop.patronym||0);++i){
-				fullname.push(parent.id || parent._getIndex());
-				parent=parent._parentContainer;
-			}
-			element=fullname.length>1?fullname:elementid;
+			for(var i=0,parent=this._parent;parent && (i++)<this._patronym;parent=parent._parent)
+				fullname.push(parent._prop.id||parent._getIndex());
+			elementid=fullname.length>1?fullname:elementid;
 		}
-		var time=ums();
-		logline('<',[time,element,val]);
-		gui.action(time,element,val);
+		gui.sendAction(elementid,v);
+		this.O();
 	}
-
-	var sendText={
-		all:function(e){sendAction(e.target.parentElement,e.target.innerHTML);},
-		pwd:function(e){
-			var c=e.target.parentElement;
-			sendAction(c,sha256(c._pwd+e.target.innerText));
-		},
+	v(v){this._setAttrC('v',v);}
+	id(){}
+	title(v){this._setAttr('title',v);}
+}
+gui.types={};
+//////////////////////////////////////////////////////////////////////////////
+// text items
+addCSS(`
+	[type='text'] > [v]:empty:before {content: attr(v) " ";display:inline-block;}
+`);
+gui.Text=class extends gui.Item{}
+gui.Text.prototype.type='text';
+//////////////////////////////////////////////////////////////////////////////
+// number items
+addCSS(`
+	[type='number'] > [v]:empty:before {content: attr(v) " ";display:inline-block;}
+`);
+gui.Number=class extends gui.Item{
+	_animatable(propName){return propName==='v' || gui.ANIMATABLE.has(propName)}
+}
+gui.Number.prototype.type='number';
+//////////////////////////////////////////////////////////////////////////////
+// boolean items
+addCSS(`
+	[type="boolean"]:before{
+		width:auto !important;
 	}
-
-	var sendEvent={
-		e:function(c,v){return function(){sendAction(c,[v]);};},
-		exy:function(c,v){return function(e){
-			var rect=c._content.getBoundingClientRect();
-			sendAction(c,[v,e.clientX-rect.left,e.clientY-rect.top]);
-		};},
-		ek:function(c,v){return function(e){sendAction(c,[v,e.keyCode]);};},
-	};
-
-	var EVENTS={
-		30:['keypress',sendEvent.ek],
-		31:['keydown',sendEvent.ek],
-		32:['keyup',sendEvent.ek],
-		40:['click',sendEvent.exy],
-		41:['dblclick',sendEvent.exy],
-		42:['mousedown',sendEvent.exy],
-		43:['mouseup',sendEvent.exy],
-		44:['mousemove',sendEvent.exy],
-		45:['mouseenter',sendEvent.exy],
-		46:['mouseleave',sendEvent.exy],
-		47:['mouseover',sendEvent.exy],
-		48:['mouseout',sendEvent.exy]
-	};
-
-	//////////////////////////////////////////////////////////////////////////////
-
-	function addDiv(container,classes,type){
-		var c=container.appendChild(document.createElement(type||'div'));
-		for(var i=0;i<classes.length;++i)c.classList.add(classes[i].replace(/[^\w-_]/gi, '_'));
-		return c;
+	[type="boolean"]{
+		display:block;
+		text-align:left;
+		cursor:pointer;
+		!important 
 	}
-
-	function addElement(container,type,level,key){
-		var c,cf,cs;
-		if(container.parentElement._type==='table'){ //tableRow
-			type='tableRow';
-			c=addDiv(container,[type,'lvl_'+level,'id_'+key,'main'],'tr');
-			// c=addDiv(container,[type,'lvl_'+level,'id_'+key,'main'],'div');
-			// c.style.display='table-row';
-			//testing: two lines above
-			c._frame=c;
-			c._parentContainer=container.parentElement;
-			c._realkey=key;
-			if(typeof(key)==='string'){
-				c.id=key;
-				c._parentContainer._childmap[key]=c;
-			}
-			c._key=addDiv(c,[type,'lvl_'+level,'id_'+key,'key'],'td');
-			c._content=c;
-		}else{                                       //everything else
-			if(container._type==='tableRow'){
-				cf=addDiv(container,[type,'lvl_'+level,'id_'+key,'frame'],'td');
-				// cf=addDiv(container,[type,'lvl_'+level,'id_'+key,'frame'],'div');
-				// cf.style.display='table-cell';
-				//testing: two lines above
-				cf._parentContainer=container;
-			}else{
-				cf=addDiv(container,[type,'lvl_'+level,'id_'+key,'frame']);
-				cf._parentContainer=container.parentElement;
-			}
-			c=addDiv(cf,[type,'lvl_'+level,'id_'+key,'main']);
-			cf._main=c;
-			c._frame=cf;
-			c._parentContainer=cf._parentContainer;
-			c._realkey=key;
-			if(typeof(key)==='string'){
-				c.id=key;
-				c._parentContainer._childmap[key]=c;
-			}
-			c._key=addDiv(c,[type,'lvl_'+level,'id_'+key,'key']);
-			cs=addDiv(c,[type,'lvl_'+level,'id_'+key,'sep']);
-			// c._content=addDiv(c,[type,'lvl_'+level,'id_'+key,'content'],type==='table'?'table':'div');
-			c._content=addDiv(c,[type,'lvl_'+level,'id_'+key,'content'],'div');
-			//if(type==='table')c._content.style.display='table';
-			//testing: two lines above
+	[type="boolean"]:active, [type="boolean"][v="true"] {
+		background-color:var(--colorTrue) !important;
+	}
+	[type="boolean"][select="-1"], [type="boolean"][select="0"] {
+		min-width:100px;
+		text-align:center;
+		display:inline-block;
+		padding:.4em;
+		color:var(--color1);
+		border:1px solid rgba(0,0,0,0.2);
+		background-color:var(--colorFalse);
+		box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);
+		cursor:pointer;
+		vertical-align:middle;
+		border-radius:4px;
+	}
+	[type="boolean"][select="1"][v="false"]:before {content:"\\029be" " ";display:inline; !important}
+	[type="boolean"][select="1"][v="true"]:before {content:"\\029bf" " ";display:inline; !important}
+	[type="boolean"][select="2"][v="false"]:before {content:"\\2610" " ";display:inline; !important}
+	[type="boolean"][select="2"][v="true"]:before {content:"\\2611" " ";display:inline; !important}
+	[type="boolean"][eB="0"] {pointer-events:none; opacity:.5; contenteditable:false}
+	[type="boolean"][select="1"][title]:after , [type="boolean"][select="2"][title]:after {content: attr(title) ""}
+	[type="boolean"][select="1"][id]:not([title]):after , [type="boolean"][select="2"][id]:not([title]):after {content: attr(id) ""}
+`);
+gui.Boolean=class extends gui.Item{
+	_initContent(){
+		this._element=document.createElement('div');			//make element inside parent
+		this._content=this._element;
+		this._parent._placeChildElement(this);
+	}
+	v(v){
+		this._setAttrC('v',v);
+		if(v && this._prop.select==-1){
+			var e=this;
+			e._prop.v=false;
+			setTimeout(function(){e._setAttrC('v',false);},250);
 		}
-		c._main=c;
-		c._type=type;
-		c._level=level;
-		c._childmap={};
-		c._options={};
-		c._prop={};
-		c._setValue=setValue[type];
-		// c._hide=function(){cf.style.visibility='hidden';};
-		// c._unhide=function(){cf.style.visibility='visible';};
-		c._getIndex=function(){
-			var i=0,me=c._frame;
-			while( (me=me.previousSibling)!=null ) ++i;
-			return i;
-		}
-		c._clear=function(){
-			c._content.innerHTML='';
-			c._childmap={};
-			// c._type=undefined;
-			// c._options={};
-			c._value=0;
-			c._select=undefined;
-			c._selected=undefined;
-			c._prop.selectedDiv=undefined;
-		};
-		c._remove=function(){
-			cf.parentElement.removeChild(cf);
-			if(key in container.parentElement._childmap)delete container.parentElement._childmap[key];
-			c._type=undefined;
-		};
-		c._changeType=function(type){
-			c._clear();
-			cf.classList.remove(c._type);
-			c.classList.remove(c._type);
-			c._key.classList.remove(c._type);
-			cs.classList.remove(c._type);
-			c._content.classList.remove(c._type);
-			cf.classList.add(type);
-			c.classList.add(type);
-			c._key.classList.add(type);
-			cs.classList.add(type);
-			c._content.classList.add(type);
-			c._type=type;
-			c._setValue=setValue[type];
-			initElement[type](c);
-		};
-		initElement[type](c);
-		return c;
 	}
-
-	function processElement(parent,key,val,options){
-		//console.log('------\n',parent,key,val,options,'\n==============');
-		if(options.R&1)sendAction(key,{R:1});
-		if(options.S){		//optional delay
-			let delay=waitTime(options.S);
-			delete options.S;
-			setTimeout(function(){processElement(parent,key,val,options);},delay);
+}
+gui.Boolean.prototype.type="boolean";
+gui.Boolean.prototype.eB=function(v){this._setAttr('eB',v);};
+gui.Boolean.prototype.select=function(v){
+	this._setAttr('select',v);
+	var item=this;
+	this.v=this.__proto__.v;
+	if(v===0){
+		this._element.onclick=null;
+		this._element.onmousedown=function(){					//onmousedown behavior
+			item._value(true);
+			item._sendAction(true);
+		}
+		this._element.onmouseup=function(){						//onmouseup behavior
+			item._value(false);
+			item._sendAction(false);
+		}
+	}else{
+		this._element.onmousedown=this._element.onmouseup=null;
+		if(v===-1){
+			this._element.onclick=function(){						//onclick behavior
+				item._sendAction(true);
+			}
+			this.v=function(v){
+				this._setAttrC('v',v);
+				if(v){
+					this._prop.v=false;
+					setTimeout(function(){item._setAttrC('v',false);},250);
+				}
+			}
+		}else if(v===1){
+			//TODO: when switch to this from v===2, clear all (but 1?) selections
+			this._element.onclick=function(){									//select/deselect behavior
+				var selectParent=item._parent;
+				while(selectParent._prop.select!==1 && selectParent!==gui.rootContainer)
+					selectParent=selectParent._parent;
+				if(selectParent._prop.select!==1)selectParent=e._parent;
+				if(item._prop.v){
+					item._sendAction(false);
+					item._value(false);
+					selectParent._selected=false;
+				}else{
+					item._sendAction(true);
+					item._value(true);
+					if(selectParent._selected)selectParent._selected._value(false);
+					selectParent._selected=item;
+				}
+			};
+		}else if(v===2){
+			this._element.onclick=function(){									//select/deselect behavior
+				if(item._prop.v){
+					item._sendAction(false);
+					item._value(false);
+				}else{
+					item._sendAction(true);
+					item._value(true);
+				}
+			};
+		}
+	}
+};
+//////////////////////////////////////////////////////////////////////////////
+// containers
+gui.Container=class extends gui.Item{
+	_initContent(){
+		super._initContent();
+		this._childmap={};
+	}
+	*[Symbol.iterator](){
+		for(var i=this._content.children.length;i--;)
+			yield this._content.children[i]._item;
+	}
+	_getChild(id){
+		if(typeof(id)==='number'){								//find child by order
+			var childElement=this._content.children[id];
+			if(childElement)return childElement._item;
+		}else if(typeof(id)==='string')							//find child by id
+			return this._childmap[id];
+	}
+	_placeChildElement(child){
+		this._content.appendChild(child._element);
+		child._outterElement=child._element;
+	}
+	_newChild(prop){
+		var type=gui.getType(prop);
+		if(!type){
+			type=gui.Container;
+			prop.v=[];
+		}
+		var child=new type(prop,this);
+		if(typeof(prop.id)!=='number')this._childmap[prop.id]=child;
+	}
+	_processChild(child,prop){
+		if(prop.v===null){										//if value is null, remove child
+			if(child._prop.id)delete this._childmap[child._prop.id];
+			this._content.removeChild(child._outterElement);
+		}else{
+			var propType=gui.getType(prop);
+			if(child._typeCheck(propType)){
+				child._update(prop);							//if value compatible, update child properties
+			}else{												//if value incompatible, replace child with new one
+				if(child._prop.id)prop.id=child._prop.id;		//correct id type in case prop.id was a number
+				var newchild=new propType(Object.assign({},child._prop,prop),this);
+				this._content.replaceChild(newchild._outterElement,child._outterElement);
+				if(child._prop.id)this._childmap[prop.id]=newchild;
+			}
+		}
+	}
+	_search(prop){
+		var child;
+		if(prop.$===false){
+			for(child of this)
+				this._processChild(child,Object.assign({},prop));
+		}else{
+			for(child of this){
+				if(prop.$===true||child._match(prop.$))
+					this._processChild(child,Object.assign({},prop));
+				if(child instanceof gui.Container)
+					child._search(prop);
+			}
+		}
+	}
+	_processProp(prop){
+		if(prop.U){		//optional delay
+			let delay=prop.U-gui.ums(),e=this;
+			delete prop.U;
+			setTimeout(function(){e._processProp(prop);},delay);
 			return;
 		}
-		if(options.W){		//optional delay
-			let delay=options.W;
-			delete options.W;
-			setTimeout(function(){processElement(parent,key,val,options);},delay*1000);
+		if(prop.T){		//optional delay
+			let delay=prop.T*1000,e=this;
+			delete prop.T;
+			setTimeout(function(){e._processProp(prop);},delay);
 			return;
 		}
-		var child;
-		if(key && key._type){
-			child=key;
-		}else if(typeof(key)==='number'){
-			child=parent._content.children[key];	//find frame by numeric key
-			if(child.classList.contains('frame'))child=child.children[0];		//get main div of child
+		if('$' in prop){
+			this._search(prop);
 		}else{
-			child=parent._childmap[key];
-		}
-		if(val===null){							//remove element
-			if(child)child._remove();
-		}else{
-			var typeofval,optKey;
-			if(child===undefined){				//new element
-				typeofval=options.type;
-				if(!typeofval){
-					if(val===undefined){ //default behavior (maybe think this through for boxes that arent buttons)
-						if(options.eT)val=""; // !!TODO: this was changed, should change it back or change stap.txt (currently specifying only options defaults to <<container>>)
-						else if(options.eN)val=0;
-						else val=[];
-					} 
-					typeofval=typeof(val);
-				}
-				child=addElement(parent._content,typeofval,parent._level+1,key);
-				child._key.innerHTML=key||'';
-				for(optKey in parent._prop)
-					if(!(optKey in options))
-						updateOption(child,optKey,parent._prop[optKey]);
-			}else{								//edit element
-				typeofval=options.type || ((val===undefined || val.constructor === Object)?'undefined':typeof(val));
-				if(typeofval!=='undefined' && child._type!==typeofval && !(COMPATIBLE[child._type] && COMPATIBLE[child._type].has(typeofval))){
-					child._changeType(typeofval);
-					var allOptions=Object.assign({},parent._prop,child._options);
-					for(optKey in allOptions)
-						if(!(optKey in options))
-							updateOption(child,optKey,allOptions[optKey]);
-				}
+			var child;
+			if('id' in prop){
+				child=this._getChild(prop.id);
+				if(prop.id.constructor===Number)delete prop.id;
 			}
-			delete options.type;
-			if(options.R&2)sendAction(key,{R:2});
-			if(options.T){						//animation
-				var animate=options.T,aniopt={},curopt={};
-				delete options.T;
-				//check which options an be animated
-				for(optKey in options){
-					if(optKey in ANIMATABLE){
-						curopt[optKey]=child._options[optKey]||(COLOROPTIONS.has(optKey)?'rgba(0,0,0,0)':0);
-						aniopt[optKey]=options[optKey];
-						delete options[optKey];
-					}
-				}
-				//animate options
-				if(Object.keys(aniopt).length){
-					ani={};
-					aniopt.onUpdate=function(options){
-						if(document.body.contains(child))
-							for(var optKey in options){
-								child._options[optKey]=options[optKey];
-								updateOption(child,optKey,options[optKey]);
-							}
-						else
-							ani.ani.kill();
-					};
-					aniopt.onUpdateParams=[curopt];
-					if(options.R&4){
-						aniopt.onComplete=function(){sendAction(child,{R:4});};
-						delete options.R;
-					}
-					ani.ani=TweenLite.to(curopt,animate,aniopt);
-				}
-				//animate value
-				if(typeof(val)==='number'){
-					ani={};
-					curopt={v:child._value};
-					aniopt={v:val,onUpdate:function(o){
-							if(document.body.contains(child))
-								child._setValue(o.v);
-							else
-								ani.ani.kill();
-						},onUpdateParams:[curopt]};
-					val=undefined;
-					if(options.R&4)aniopt.onComplete=function(){sendAction(child,{R:4});};
-					ani.ani=TweenLite.to(curopt,animate,aniopt);
-					val=undefined;
-				}
-			}
-			Object.assign(child._options,options);
-			for(optKey in options)
-				updateOption(child,optKey,options[optKey]);
-			if(val!==undefined){
-				child._setValue(val);
-				//onEdit(child,parent);
-			}
-			if(child._options.scroll&2)
-				child._content.scrollTop=child._content.scrollHeight;
-		}
-	}
-	
-	function processProperties(props,parent){
-		var key,val,options={};
-		for(var k in props){
-			if(k.startsWith('@')){
-				if(props[k].constructor!==Object)
-					val=props[k];
-				key=k.substr(1);
-				if(key==='')key=undefined;
-			}else if(!key && !val && k.startsWith('#')){
-				if(!key && !val){
-					if(props[k].constructor!==Object)
-						val=props[k];
-					key=parseInt(k.substr(1));
-				}
-			}else if(!key && !val && k.constructor===Number){
-				if(props[k].constructor!==Object)
-					val=props[k];
-				key=k;
-			}else options[k]=props[k];
-		}
-		if(parent){
-			processElement(parent,key,val,options);
-		}else{
-			var e=document.getElementById(key);
-			if(e)processElement(e._parentContainer,e,val,options);
-		}
-	}
-
-	function updateOption(child,option,value){
-		(setOption.all[option]||setOption[child._type][option]||setOption[child._type].default||pass)(child,value,option);
-	}
-
-	initElement={
-		object:pass,
-		number:function(c){
-			c._value=0;
-			if(!c._prop.prefixSpan)c._prop.prefixSpan=c._content.appendChild(document.createElement('span'));
-			if(!c._prop.valueSpan)c._prop.valueSpan=c._content.appendChild(document.createElement('span'));
-			if(!c._prop.suffixSpan)c._prop.suffixSpan=c._content.appendChild(document.createElement('span'));
-			if(!c._prop.min)c._prop.min=pass;
-			if(!c._prop.max)c._prop.max=pass;
-			if(!c._prop.rnd)c._prop.rnd=pass;
-			if(!c._prop.fmt)c._prop.fmt=same;
-			if(!c._prop.display)c._prop.display=function(){c._prop.valueSpan.innerHTML=c._prop.fmt(c._value);};
-		},
-		string:function(c){
-			c._sendText=function(e){sendAction(e.target.parentElement,e.target.innerHTML);}
-			c._checkText=pass;
-			c._content.addEventListener('input',function(e){
-				c._checkText(e);
-			});
-		},
-		boolean:pass,
-		table:pass,
-		tableRow:pass,
-		tableCell:pass,
-		path:function(c){
-			c._svg=c._content.appendChild(document.createElementNS(SVGNS,'svg'));
-			c._path=c._svg.appendChild(document.createElementNS(SVGNS,'path'));
-			c._path.setAttribute('stroke-width',1);
-			c._path.setAttribute('stroke','black');
-			c._path.setAttribute('fill','none');
-		}
-	}
-
-	function spreadOptionsToChildren(c,v,option){
-		c._prop[option]=v;
-		var child;
-		for(var i=0;i<c._content.childElementCount;++i){
-			child=c._content.children[i]._main;
-			if(child && child._options[option]===undefined){
-				(setOption[child._type][option]||pass)(child,v);
+			if(child){										//if child exists
+				this._processChild(child,prop);
+			}else if(prop.v!==null){						//new child
+				this._newChild(prop);
 			}
 		}
 	}
-
-	setOption={
-		all:{
-			e:function(c,v){
-				if(v.constructor!==Array)v=[v];
-				if(c._clearEvents)c._clearEvents();
-				var functions=[];
-				for(var i=0;i<v.length;++i){
-					functions[i]=EVENTS[v[i]][1](c,v[i]);
-					c._content.addEventListener(EVENTS[v[i]][0],functions[i]);
-				}
-				c._clearEvents=function(){
-					for(var i=0;i<v.length;++i){
-						c._content.removeEventListener(EVENTS[v[i]][0],functions[i]);
-					}
-				}
-			},
-			scroll:function(c,v){c._content.style.overflowY=v&1?'auto':null;},
-			title:function(c,v){c._key.innerHTML=v===null?c._realkey:v;},
-			emp:function(c,v){
-				var i,e;
-				if(c._prop.emp)
-					for(i=0;i<c._prop.emp.toString().length;++i){
-						e=Math.pow(10,i);
-						c._content.classList.remove('emp'+(Math.floor(c._prop.emp/e)%10)*e);
-					}
-				c._prop.emp=v;
-				for(i=0;i<v.toString().length;++i){
-					e=Math.pow(10,i);
-					c._content.classList.add('emp'+(Math.floor(v/e)%10)*e);
-				}
-			},
-			bg:function(c,v){c._content.style.backgroundColor=v;},
-			c:function(c,v){c._content.style.color=v;},
-			fnt:function(c,v){c._content.style.font=v;},
-			bd:function(c,v){c._content.style.borderStyle=v;},
-			bdc:function(c,v){c._content.style.borderColor=v;},
-			bdw:function(c,v){c._content.style.borderWidth=v;},
-			pad:function(c,v){c._content.style.padding=v;},
-			r:function(c,v){c._content.style.borderRadius=v+'px';},
-			x:function(c,v){c._frame.style.left=v;},
-			y:function(c,v){
-				c._frame.style.top=v;
-				if(v===null){
-					c._frame.classList.remove('xy');
-					c.classList.remove('xy');
-				}else{
-					c._frame.classList.add('xy');
-					c.classList.add('xy');
-				}
-			},
-			z:function(c,v){c._frame.style.zIndex=v;},
-			w:function(c,v){c._content.style.width=v;},
-			h:function(c,v){c._content.style.height=v;},
-			rot:function(c,v){c._content.style.setProperty('transform','rotate('+v+'deg)');}
-		},
-		object:{
-			default:spreadOptionsToChildren
-		},
-		number:{
-			rnd:function(c,v){
-				if(c._prop.rndval!==v){
-					c._prop.rndval=v;
-					if(v){
-						c._prop.rnd=function(){c._value=round2(c._value,v);};
-						if(c._progressbar)progressbar.maketics(c);
-						updateContainers.add(c);
-					}else{
-						c._prop.rnd=pass;
-						if(c._progressbar)progressbar.removetics(c);
-					}
-				}
-			},
-			'>=':function(c,v){
-				if(c._prop.minval!==v){
-					c._prop.minval=v;
-					if(v!==null){
-						c._prop.min=function(){if(c._value<v)c._value=v;};
-						if(c._prop.max!==pass)
-							progressbar.init(c);
-						// else
-							// c._prop.display=function(){c._content.innerHTML=c._prop.fmt(c._value);};
-						updateContainers.add(c);
-					}else{
-						c._prop.min=pass;
-						progressbar.destroy(c);
-						// c._prop.display=function(){c._content.innerHTML=c._prop.fmt(c._value);};
-						updateContainers.add(c);
-					}
-				}
-			},
-			'<=':function(c,v){
-				if(c._prop.maxval!==v){
-					c._prop.maxval=v;
-					if(v!==null){
-						c._prop.max=function(){if(c._value>v)c._value=v;};
-						if(c._prop.min!==pass)
-							progressbar.init(c);
-						// else
-							// //c._prop.
-							// c._prop.display=function(){c._content.innerHTML=c._value+" of "+c._prop.fmt(c._prop.maxval);};
-						//TODO: add n of X display to suffix -- maybe use fmt() to change suffix
-						updateContainers.add(c);
-					}else{
-						c._prop.max=pass;
-						progressbar.destroy(c);
-						// c._prop.display=function(){c._content.innerHTML=c._prop.fmt(c._value);};
-						updateContainers.add(c);
-					}
-				}
-			},
-			unit:function(c,v){
-				var dollarsign=v.indexOf('$');
-				if(dollarsign>-1){
-					v=v.replace('$',' ').trim();
-					c._prop.prefixSpan.innerHTML='$';
-				}
-				c._prop.suffixSpan.innerHTML=v;
-			},
-			time:function(c,v){
-				if(v){
-					c._prop.prefixSpan.innerHTML='';
-					c._prop.suffixSpan.innerHTML='';
-					c._prop.fmt=function(x){
-						return new Date(x*1000).toString(v);
-					};
-				}else{
-					c._prop.fmt=same;
-				}
-				updateContainers.add(c);
-			},
-			eN:function(c,v){
-				//TODO: account for progressbar and x of n
-				//	may be nice to have a sep div for value, and a sep div for styling (e.g. styling can be the progressbar or the "of N")
-				//
-				c._prop.eN=v;
-				if(v&1 || v&2 || v&4){
-					if(c._progressbar){
-						c._prop.valueSpan.setAttribute('contenteditable',false);
-						c._prop.valueSpan.removeEventListener("keyup", keepNumeric);
-						c._prop.valueSpan.onkeypress=null;
-						c._prop.valueSpan.onblur=null;
-						c._prop.valueSpan.oninput=null;
-						c._content.addEventListener('click',progressbar.getValue,false);
-					}else{
-						c._content.removeEventListener('click',progressbar.getValue,false);
-						c._prop.valueSpan.setAttribute('contenteditable',true);
-						if(!document.activeElement.getAttribute('contenteditable')){
-							c._prop.valueSpan.focus();
-							setTimeout(function(){select(c._prop.valueSpan)},1);
-						}
-						// c._prop.valueSpan.addEventListener("keyup", keepNumeric, false);
-						if(v&1)c._prop.valueSpan.onkeypress=function(e){if(e.keyCode==13){sendAction(c,parseFloat(c._content.innerText));return false;}};
-						else c._prop.valueSpan.onkeypress=null;
-						if(v&2)c._prop.valueSpan.onblur=function(){sendAction(c,parseFloat(c._content.innerText));};
-						else c._prop.valueSpan.onblur=null;
-						if(v&4)c._prop.valueSpan.oninput=function(){sendAction(c,parseFloat(c._content.innerText));};
-						else c._prop.valueSpan.oninput=null;
-					}
-				}else{
-					c._content.setAttribute('contenteditable',false);
-					c._content.removeEventListener("keyup", keepNumeric);
-				}
-			},
-			onedit:function(c,v){c._prop.onedit=v;},
-			patronym:function(c,v){c._prop.patronym=v;}
-		},
-		string:{
-			maxchars:function(c,v){
-				if(v){
-					c._checkText=function(e){
-						if(c._content.innerText.length>c._options.maxchars){
-							//e.preventDefault();
-							// c._content.focus();
-							//v=c._content.innerText.substr(0,c._options.maxchars);
-							// c._content.innerText='';
-							// c._content.innerText=v;
-							// c._content.setSelectionRange(1000,1000);
-							c._content.innerText=c._content.innerText.substr(0,c._options.maxchars);
-							// moveCursorToEnd(c._content);
-							setTimeout(function(){
-								cursorToEnd(c._content);
-								// c._content.selectionStart = c._content.selectionEnd = 100000;
-							},1);
-						}
-					};
-				}else{
-					c._checkText=pass;
-				}
-			},
-			eT:function(c,v){
-				if(v&1 || v&2 || v&4){
-					c._content.setAttribute('contenteditable',true);
-					if(!document.activeElement.getAttribute('contenteditable'))c._content.focus()
-					if(v&1){ //on enter
-						c._content.onkeypress=function(e){if(e.keyCode==13){c._sendText(e);return false;}};
-					}
-					if(v&2){ //on blur
-						c._content.onblur=c._sendText;
-					}
-					if(v&4){ //on any change
-						//TODO: this will conflict with v&1, specifically in that enter key will be allowed
-						c._content.oninput=c._sendText;
-					}
-				}else{
-					c._content.setAttribute('contenteditable',false);
-				}
-			},
-			pwd:function(c,v){
-				if(v){
-					this._sendText=function(e){
-						sendAction(e.target.parentElement,sha256(v+e.target.innerText));
-					}
-				}else
-					this._sendText=function(e){
-						sendAction(e.target.parentElement,e.target.innerHTML);
-					}
-			},
-			onedit:function(c,v){c._prop.onedit=v;},
-			patronym:function(c,v){c._prop.patronym=v;}
-		},
-		boolean:{
-			select:function(c,v){
-				if(v==0){
-					c.setAttribute('_select','0');
-					c.setAttribute('onclick',null);
-					c.onmousedown=function(){sendAction(c,true);};
-					c.onmouseup=function(){sendAction(c,false);};
-				}else if(v==1){
-					c.setAttribute('_select','1');
-					c._prop.selectContainer=c._parentContainer;
-					if(c._options.select===undefined){
-						while(c._prop.selectContainer._options.select===undefined){
-							c._prop.selectContainer=c._prop.selectContainer._parentContainer;
-						}
-					}
-					c._prop.selectContainer._prop.selectedDiv=undefined;
-					if(c.getAttribute('_selected')==1)c.setAttribute('_selected',0);
-					c.setAttribute('onmousedown',null);
-					c.setAttribute('onmouseup',null);
-					c.onclick=function(){
-						if(c.getAttribute("_selected")==1){
-							c.setAttribute("_selected",0);
-							c._prop.selectContainer._prop.selectedDiv=undefined;
-							sendAction(c,false);
-						}else{
-							c.setAttribute("_selected",1);
-							if(c._prop.selectContainer._prop.selectedDiv!=undefined)
-								c._prop.selectContainer._prop.selectedDiv.setAttribute("_selected",0);
-							c._prop.selectContainer._prop.selectedDiv=c;
-							sendAction(c,true);
-						}
-					}
-				}else if(v==2){
-					c.setAttribute('_select','2');
-					c.setAttribute('onmousedown',null);
-					c.setAttribute('onmouseup',null);
-					c.onclick=function(){
-						if(c.getAttribute("_selected")==1){
-							c.setAttribute("_selected",0);
-							sendAction(c,false);
-						}else{
-							c.setAttribute("_selected",1);
-							sendAction(c,true);
-						}
-					}
-				}else if(v==0.5){
-					c.setAttribute('_select','0.5');
-				}else{
-					c.setAttribute('_select','-1');
-					c.setAttribute('onmousedown',null);
-					c.setAttribute('onmouseup',null);
-					c.onclick=function(){sendAction(c,true);};
-				}
-			},
-			eB:function(c,v){
-				if(v)c.classList.remove('disabled');
-				else c.classList.add('disabled');
-			},
-			onedit:function(c,v){c._prop.onedit=v;},
-			patronym:function(c,v){c._prop.patronym=v;}
-		},
-		path:{},
-		table:{
-			head:function(c,v){
-				c.setAttribute('_head',v);
-				if(v)c._content.addEventListener('scroll',floatRow);
-			},
-			default:spreadOptionsToChildren
-		},
-		tableRow:{
-			default:spreadOptionsToChildren
-		},
-		tableCell:{
-			default:spreadOptionsToChildren
+	v(updates){		//cycle through all updates for this container
+		for(var i of updates)this._processProp(gui.prop(i));
+	}
+	_default(propValue,propName){
+		for(var child of this){
+			if(propName in child)child[propName](propValue);
+			else child._default(propValue,propName);
 		}
 	}
+}
+gui.Container.prototype.type='container';
+//////////////////////////////////////////////////////////////////////////////
 
-	setValue={
-		object:function(data){
-			var i,props;
-			for(i=0;i<data.length;++i){
-				props={};
-				if(data[i].constructor===Object){	//get key,val,opt
-					processProperties(data[i],this);
-				}else{
-					processElement(this,undefined,data[i],{});
-				}
-				// if(key===true){  wildcard key processing
-					// for(key=this._content.childElementCount-1;key>=0;--key){
-						// processElement(this,key,val,options);
-					// }
-				// }else{
-					// processElement(this,key,val,options);
-				// }
-			}
-			updateContainers.delete(this);
-		},
-		number:function(data){
-			if(typeof(data)==='number')this._value=data;
-			this._prop.min();
-			this._prop.max();
-			this._prop.rnd();
-			this._prop.display();
-			updateContainers.delete(this);
-		},
-		string:function(data){
-			this._content.innerHTML=replaceShorthand(data);
-			updateContainers.delete(this);
-		},
-		boolean:function(data){
-			if(data===true){
-				this.setAttribute("_selected",1);
-				if(this.getAttribute('_select')=='-1'){
-					var container=this;
-					setTimeout(function(){container.setAttribute("_selected",0)},250);
-				}else if(this.getAttribute('_select')=='1'){
-					if(this._prop.selectContainer._prop.selectedDiv!==undefined)
-						this._prop.selectContainer._prop.selectedDiv.setAttribute("_selected",0);
-					this._prop.selectContainer._prop.selectedDiv=this;
-				}
-			}else{
-				this.setAttribute("_selected",0);
-				if(this.getAttribute('_select')=='1' && this._prop.selectContainer._prop.selectedDiv===this)
-					this._prop.selectContainer._prop.selectedDiv=undefined;
-			}
-			updateContainers.delete(this);
-		},
-		path:function(data){
-			if(data.constructor==Array){
-				var d=this._path.getAttribute('d');
-				if(d)this._path.setAttribute('d',d+" "+data.join(' '));
-				else if(data[0].constructor===Number)this._path.setAttribute('d',"M"+data.join(' '));
-				else this._path.setAttribute('d',data.join(' '));
-			}else if(data.constructor==String)
-				this._path.setAttribute('d',data);
-		}
-	}
-	setValue.table=setValue.object;
-	setValue.tableRow=setValue.object;
-	setValue.tableCell=setValue.object;
-
-	//////////////////////////////////////////////////////////////////////////////
-	// main function call to update the gui
-
-	function update(data){
-		logline('>',data);
-		if(data===null){
-			maindiv._content.innerHTML='';
-			maindiv._childmap={};
-		}else if(data.constructor===Array){
-			maindiv._setValue(data);
-		}else if(typeof(data)==="object"){
-			if(data.R&1)sendAction(0,{R:1});
-			if(data.S){		//optional delay
-				let delay=waitTime(data.S);
-				delete data.S;
-				setTimeout(function(){update(data);},delay);
-				return;
-			}
-			if(data.W){		//optional delay
-				let delay=data.W;
-				delete data.W;
-				setTimeout(function(){update(data);},delay);
-				return;
-			}
-			if(data.R&2)sendAction(0,{R:2});
-			// process special root directives
-			if('error' in data){console.log('ERROR: '+data.error);delete data.error;}
-			if('require' in data){
-				var errors,quit=false;
-				for(var key in data.require){
-					if(key=='options'){
-						errors=[];
-						for(let i=0;i<data.require.options.length;++i){
-							if(!OPTIONS.has(data.require.options[i]))
-								errors.push(data.require.options[i]);
-							else if(data.require.options[i] in REQUIRED)
-								load(REQUIRED[data.require.options[i]]);
-							// else if(!markerdefs && data.require.options[i].startsWith('arrow'))
-								// initMarkers();
-						}
-						if(errors.length){
-							sendAction(0,{error:'Sorry, I cannot handle the required directive(s): '+errors});
-							document.write('ERROR: Cannot handle required task directive(s): '+errors+'<br><br>');
-							quit=true;
-						}
-					}else if(key=='events'){
-						errors=data.require.events.filter(function(x){return (x in EVENTS)});
-						if(errors.length){
-							sendAction(0,{error:'Sorry, I cannot handle the required event(s): '+errors});
-							document.write('ERROR: Cannot handle required task event(s): '+errors+'<br><br>');
-							quit=true;
-						}
-					}else if(key=='types'){
-						errors=data.require.types.filter(function(x){return !TYPES.has(x)});
-						if(errors.length){
-							sendAction(0,{error:'Sorry, I cannot handle the required type(s): '+errors});
-							document.write('ERROR: Cannot handle required task type(s): '+errors+'<br><br>');
-							quit=true;
-						}
-					}else if(key=='emphases'){
-						let selectors=[],i,e,rules,x;
-						for(i = 0; i < document.styleSheets.length; i++){
-							rules = document.styleSheets[i].rules || document.styleSheets[i].cssRules;
-							for(x in rules) {
-								if(typeof rules[x].selectorText == 'string')
-									selectors.push(rules[x].selectorText);
-							}
-						}
-						for(i=0;i<data.require.emphases.toString().length;++i){
-							e=Math.pow(10,i);
-							x=(Math.floor(data.require.emphases/e)%10)*e;
-							if(selectors.indexOf('.emp'+x)<0)errors.push(x);
-						}
-						if(errors.length){
-							sendAction(0,{error:'Sorry, I cannot handle the required emphases: '+errors});
-							document.write('ERROR: Cannot handle required emphases: '+errors+'<br><br>');
-							quit=true;
-						}
-					}else{
-						sendAction(0,{error:'Sorry, I cannot handle "require" directive: '+key+':'+data.require[key]});
-						document.write('ERROR: Cannot handle "require" directive: '+key+':'+data.require[key]+'<br><br>');
-						quit=true;
-					}
-				}
-				if(quit && ws)ws.close();
-				delete data.require;
-			}
-			if('client' in data){
-				var reply={};
-				for(let i=0;i<data.client.length;++i){
-					if(data.client[i]=='url'){
-						reply.url=objectify(location);
-					}else if(data.client[i]=='screen'){
-						reply.screen=objectify(screen);
-					}else if(data.client[i]=='ip'){
-						if(ipAddress)reply.ip=ipAddress;
-						else
-							load('https://api.ipify.org/?format=jsonp&callback=gotip',
-								null,
-								function(){
-									if(!ipAddress)
-										sendAction(0,{error:"could not get IP address"});
-								},
-								'js');
-					}else if(data.client[i]=='userAgent'){
-						reply.userAgent=navigator.userAgent;
-					}
-				}
-				if(Object.keys(reply).length)
-					sendAction(0,{client:reply});
-				delete data.client;
-			}
-			if('template' in data){
-				var url=data.template;
-				delete data.template;
-				load(url,function(){update(data);}); //refreshNumerics(maindiv);});
-				return;
-			}
-			if('replace' in data){
-				Object.assign(txtReplace,data.replace);
-				delete data.replace;
-			}
-			if('task' in data){
-				var cond;
-				for(var taskThing in data.task){
-					for(var condi in data.task[taskThing]){
-						cond=data.task[taskThing][condi];
-						if(!(cond[0] in taskOptions))taskOptions[cond[0]]=[];
-						//if(!(taskThing in taskOptions[cond[0]]))taskOptions[cond[0]][taskThing]=[];
-						taskOptions[cond[0]].push(cond.length==2?['==',cond[1],taskThing]:[cond[1],cond[2],taskThing]);
-					}
-				}
-				//taskInstructions(data.task);
-				delete data.task;
-			}
-			if('.' in data && data['.'].constructor===Object){
-				processProperties(data['.']);
-			}
-			// process other optional element directives
-			Object.assign(maindiv._options,data);
-			for(var optKey in data){
-				updateOption(maindiv,optKey,data[optKey]);
-			}
-		}
-		for(var i in updateContainers)updateContainers[i]._setValue();
-		if(maindiv._options.scroll&2)window.scrollTo(0,document.body.scrollHeight);
-	}
-
+//////////////////////////////////////////////////////////////////////////////
+// onload: initiate rootContainer and connect to task software
+logToConsole(); //TODO: get rid of this before commit
+(function(){
 	//////////////////////////////////////////////////////////////////////////////
 	// init window and connect to task
-
 	function init(){
-		//check and make sure basic stap.css template is loaded
-		var x=document.getElementsByTagName('link');
-		for(var i=0;i<x.length;++i){if(x[i].href.endsWith('stap.css'))break;}
-		if(i==x.length){load(STAPCSS,init);return;}
-		//add stylesheet to head
-		var style = document.createElement("style");
-		style.appendChild(document.createTextNode(""));// WebKit hack
-		document.head.appendChild(style);
 		//create foundational element
-		document.body.parentElement._childmap={};
-		maindiv=addElement(document.body,'object',0,"__main__");
-		maindiv._prop.select=-1;
-		//collect all options
-		for(var key in setOption){
-			TYPES.add(key);
-			for(var optKey in setOption[key])
-				OPTIONS.add(optKey);
-			TYPES.delete('all');
+		document.body._level=-1;
+		document.body._content=document.body;
+		document.body._placeChildElement=function(child){
+			this._content.appendChild(child._element);
+			child._outterElement=child._element;
 		}
+		gui.rootContainer=new gui.Container({select:-1},document.body);
+		gui.rootContainer._parent=undefined;
+		gui.rootContainer.error=gui.error;
+		gui.rootContainer.require=gui.require;
+		gui.rootContainer.agent=gui.agent;
+		gui.rootContainer.template=gui.template;
+		//connect to task
 		if(task.userAction){
 			//if task code is client-side script...
 			connectToTaskScript();
 		}else if(task.location || location.params.l){
 			// load url if one is supplied...
-			gui.update(['Loading...']);
+			gui(['Loading...']);
 			task.location=task.location || location.params.l;
 			if(task.location.startsWith('ws://') || task.location.startsWith('wss://'))
 				connectToTaskWS();
 			else
 				connectToTaskHTTP();
 		}else{
-			gui.update(['Hey there...',{'@Intersted in the STAP?':['<a href=https://github.com/vdv7/stap>https://github.com/vdv7/stap</a>','<a href=https://github.com/vdv7/stapjs>https://github.com/vdv7/stapjs</a>']}]);
+			gui(['Hey there...',{id:'Intersted in the STAP?',v:[
+				'https://github.com/vdv7/stap',
+				'https://github.com/vdv7/stapjs',
+				'https://github.com/vdv7/actr-stap']}]);
 		}
 	}
-
 	function onTaskConnect(){
-		update(null);
-		startTime=(new Date()).getTime();
-		sendAction(0,[0]);
-		window.addEventListener('unload',function(){sendAction(0,[1]);},false);
+		gui(null);
+		gui.startTime=(new Date()).getTime();
+		gui.sendAction(0,[0]);
+		window.addEventListener('unload',function(){gui.sendAction(0,[1]);},false);
 	}
-
 	function connectToTaskScript(){
 		//	connect gui.action to task.userAction
 		if(task.userAction)gui.action = task.userAction;
 		//	connect task.updateUI to gui.update;
-		task.updateUI = gui.update;
+		task.updateUI = gui;
+		task.ui=gui;
 		//	define task.end
-		task.end=pass;
+		task.end=function(){};
 		//	start task
 		onTaskConnect();
 		if(task.start)task.start();
 	}
-
 	function connectToTaskHTTP(){
 		
 		function urlWithQuery(url){
@@ -1356,7 +827,7 @@ var gui=(function(){
 				onTaskConnect();
 			}catch(e){							//parse task message
 				task.callbackState=state;
-				gui.update(data);
+				gui(data);
 			}
 		}
 
@@ -1364,41 +835,361 @@ var gui=(function(){
 		onTaskConnect();
 
 	}
-
 	function connectToTaskWS(){
+		logToConsole();
 		if("WebSocket" in window){
 			gui.action = function(time,id,val){
 				ws.send(JSON.stringify([time,id,val]));
 			}
 			ws=new window.WebSocket(task.location);
-			ws.onerror=function(e){gui.update(null);gui.update({'error':'Cannot establish connection to '+task.location});};
+			ws.onerror=function(e){gui(null);gui({'error':'Cannot establish connection to '+task.location});};
 			ws.onopen=onTaskConnect;
 			ws.onclose=function(event){
 				console.log('Connection closed ('+event.code+').');
-				//gui.update(['Connection closed.']);
+				//gui(['Connection closed.']);
 			};
 			ws.onmessage=function(msg){
-				gui.update(JSON.parse(msg.data));
+				gui(JSON.parse(msg.data));
 			};
 		}else{
-			gui.update(null);
-			gui.update([{'@Error':'Your browser does not support websockets. Please use a modern browser to run this application.'}]);
+			gui(null);
+			gui([{id:'Error',v:'Your browser does not support websockets. Please use a modern browser to run this application.'}]);
 		}
 	}
-
 	//////////////////////////////////////////////////////////////////////////////
-	
-	return {
-		// m:maindiv,
-		R:REQUIRED,
-		O:OPTIONS,
-		init:init,
-		update:update,
-		edit:function(key,val,options){
-			var e=document.getElementById(key);
-			if(e)processElement(e._parentContainer,e,val,options||{});
+	window.addEventListener("load",init);
+})();
+//////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+//
+// above this line are:
+//   core STAP text&button features, search ($), timing (QRSTU), and some button/radio/checkbox options (select,eB)
+//////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
+// below this line are:
+//   additional UI features (e.g. tables, inputs, emphasized text)
+//
+
+
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+// additional common options
+
+gui.Item.prototype.P=function(v){
+	var insertBefore=this._parent._getChild(v);
+	if(insertBefore)this._parent._content.insertBefore(this._outterElement,insertBefore._outterElement);
+};
+
+gui.Item.prototype.O=function(){
+	//TODO: this currently doesn't account for QRTU
+	if(this._onedit!==undefined){
+		this._parent._processChild(this,gui.prop(this._onedit));
+	}
+	for(var parent=this._parent;parent;parent=parent._parent){
+		if(parent._prop.onsubedit){
+			if(parent._parent)
+				parent._parent._processChild(parent,gui.prop(parent._prop.onsubedit));
+			else
+				gui(gui.prop(parent._prop.onsubedit));
+			break;
 		}
 	}
-})();
+}
 
-window.addEventListener("load",gui.init);
+gui.Text.prototype.onedit=function(v){this._onedit=v;};
+gui.Number.prototype.onedit=gui.Text.prototype.onedit;
+gui.Boolean.prototype.onedit=gui.Text.prototype.onedit;
+
+gui.Container.prototype.onsubedit=function(){}
+
+gui.Text.prototype.patronym=function(v){this._patronym=v;}
+gui.Number.prototype.patronym=gui.Text.prototype.patronym;
+gui.Boolean.prototype.patronym=gui.Text.prototype.patronym;
+
+addCSS(`
+	[emp="1"] {font-weight:bold}
+	[emp="2"] {font-weight:bold;font-style:italic}
+	[emp="3"] {font-weight:bold;font-style:italic;text-decoration:underline}
+	[emp="4"] {font-weight:bold;font-style:italic;text-decoration:underline;font-size:110%}
+	[emp="5"] {font-weight:bold;font-style:italic;text-decoration:underline;font-size:120%}
+	[emp2="1"] {background-color:rgba(255,255,0,.2);box-shadow: 0 0 0px 4px rgba(255,255,0,0.2);}
+	[emp2="2"] {background-color:rgba(255,255,0,.4);box-shadow: 0 0 0px 4px rgba(255,255,0,0.3);}
+	[emp2="3"] {background-color:rgba(255,255,0,.6);box-shadow: 0 0 0px 4px rgba(255,255,0,0.4);}
+	[emp2="4"] {background-color:rgba(255,255,0,.8);box-shadow: 0 0 0px 4px rgba(255,255,0,0.5);}
+	[emp2="5"] {background-color:rgba(255,255,0,1);box-shadow: 0 0 5px -1px rgba(255,255,0,0.6);}
+`);
+gui.Item.prototype.emp=function(v){this._setAttr('emp',v)};
+gui.Item.prototype.emp2=function(v){this._setAttr('emp2',v)};
+
+gui.Item.prototype.opc=function(v){this._element.style.opacity=v;};
+
+gui.Item.prototype.bg=function(v){this._element.style.background=gui.color(v);};
+
+gui.Item.prototype.c=function(v){this._element.style.color=gui.color(v);};
+
+gui.Item.prototype.fnt=function(v){this._element.style.font=v;};
+
+gui.Item.prototype.bd=function(v){this._element.style.borderStyle=v;};
+
+gui.Item.prototype.bdc=function(v){this._element.style.borderColor=gui.color(v);};
+
+gui.Item.prototype.bdw=function(v){this._element.style.borderWidth=v;};
+
+gui.Item.prototype.pad=function(v){this._element.style.padding=v;};
+
+gui.Item.prototype.r=function(v){this._element.style.borderRadius=v+'px';};
+
+gui.Item.prototype.w=function(v){this._element.style.width=v;};
+
+gui.Item.prototype.h=function(v){this._element.style.height=v;};
+
+gui.Item.prototype.z=function(v){this._element.style.zIndex=10+v;};
+
+gui.Item.prototype.rot=function(v){this._element.style.setProperty('transform','rotate('+v+'deg)');};
+
+addCSS(`
+	[x],[y] {position:absolute;margin:0px}
+	[childPos] > [v] {margin:0px;position:absolute;top:0px;left:0px;overflow:visible}
+`);
+gui.Container.prototype._hasPositionedElements=function(){	//enables Item.x and Item.y behavior
+	for(var i of this)
+		if(getComputedStyle(i._element).position==='absolute')
+			return true;
+	return null;
+}
+gui.Item.prototype.x=function(v){
+	this._element.style.left=v;
+	this._setAttr('x',v);
+	this._parent._setAttr('childPos',this._parent._hasPositionedElements());
+};
+gui.Item.prototype.y=function(v){
+	this._element.style.top=v;
+	this._setAttr('y',v);
+	this._parent._setAttr('childPos',this._parent._hasPositionedElements());
+};
+
+/*
+	e:function(c,v){
+		if(v.constructor!==Array)v=[v];
+		if(c._clearEvents)c._clearEvents();
+		var functions=[];
+		for(var i=0;i<v.length;++i){
+			functions[i]=EVENTS[v[i]][1](c,v[i]);
+			c._content.addEventListener(EVENTS[v[i]][0],functions[i]);
+		}
+		c._clearEvents=function(){
+			for(var i=0;i<v.length;++i){
+				c._content.removeEventListener(EVENTS[v[i]][0],functions[i]);
+			}
+		}
+	},
+	scroll:function(c,v){c._content.style.overflowY=v&1?'auto':null;},
+*/
+//////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////////////
+// additional text options
+addCSS(`
+	[contenteditable=true] {background-color:white;min-width:100px;padding-left:5px;padding-right:5px;border:solid 1px lightgray;font-family:monospace}
+`);
+gui.Text.prototype.eT=function(v){
+	var c=this._content;
+	c._removeListeners();
+	if(v>0){
+		c.setAttribute('contenteditable',v>0);
+		c._listen('paste',function(e){
+			e.preventDefault();
+			var txt=e.clipboardData.getData("text/plain");
+			document.execCommand("insertText",false,(v&1)?txt.replace(/\n|\r/g,' '):txt);
+		});
+		c._listen('input',()=>{c.setAttribute('v',c.innerText);c._item._prop.v=c.innerText;});
+		if(v==4){
+			c._listen('input',()=>{c._item._sendAction(c.innerText)});
+		}else if(v==3){
+			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault()}});
+			c._listen('input',()=>{c._item._sendAction(c.innerText)});
+		}else if(v==2){
+			c._listen('blur',()=>{c._item._sendAction(c.innerText)});
+		}else{
+			c._listen('blur',()=>{c._item._sendAction(c.innerText)});
+			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault();c._item._sendAction(c.innerText)}});
+		}
+	}else{
+		c.removeAttribute('contenteditable');
+	}
+};
+//////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////////////
+// additional number options
+addCSS(`
+	[type='number'] > [unit]:after {content: attr(unit);}
+`);
+gui.Number.prototype.eN=function(v){
+	var c=this._content;
+	c._removeListeners();
+	if(v>0){
+		c.setAttribute('contenteditable',v>0);
+		c._listen('paste',(e)=>{
+			e.preventDefault();
+			var v=parseFloat(e.clipboardData.getData("text/plain"));
+			if(!isNaN(v))
+				document.execCommand("insertText", false, v);
+		});
+		function send(){
+			if(c.innerText && c.innerText!=c.getAttribute('v')){
+				c._value(parseFloat(c.innerText));
+				c.innerText='';
+				c._item._sendAction(c._item._prop.v);
+			}
+		}
+		c._listen('blur',send);
+		c._listen('keypress',(e)=>{
+			if(e.keyCode==13){
+				e.preventDefault();
+				send();
+			}else if(e.key && '0123456789e.'.indexOf(e.key)==-1){
+				e.preventDefault();
+			}
+		});
+	}else{
+		c.removeAttribute('contenteditable');
+	}
+};
+gui.Number.prototype.unit=function(v){this._setAttrC('unit',v);};
+gui.Number.prototype.max=function(v){this._max=(v===null)?undefined:v;this.v(this._prop.v);};
+gui.Number.prototype.min=function(v){this._min=(v===null)?undefined:v;this.v(this._prop.v);};
+gui.Number.prototype.rnd=function(v){this._rnd=(v===null)?undefined:v;this.v(this._prop.v);};
+gui.Number.prototype.time=function(v){this._setAttr('time',v);this.v(this._prop.v);};
+gui.Number.prototype.v=function(v){
+	if(this._min!==undefined)v=Math.max(v,this._min);
+	if(this._max!==undefined)v=Math.min(v,this._max);
+	if(this._rnd!==undefined)v=Math.round2(v,this._rnd);
+	if(this._attr('time'))v=new Date(v*1000).format(this._attr('time'));
+	this._setAttrC('v',v);
+}
+//////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////////////
+// html
+gui.Html=class extends gui.Text{
+	v(v){this._content.innerHTML=v;}
+}
+gui.Html.prototype.type='html';
+gui.Html.prototype.eT=function(v){
+	var c=this._content;
+	c._removeListeners();
+	if(v>0){
+		c.setAttribute('contenteditable',v>0);
+		c.innerText=c.innerHTML;
+		c._listen('paste',function(e){
+			e.preventDefault();
+			var txt=e.clipboardData.getData("text/plain");
+			document.execCommand("insertText",false,(v&1)?txt.replace(/\n|\r/g,' '):txt);
+		});
+		c._listen('input',()=>{c.setAttribute('v',c.innerText);c._item._prop.v=c.innerText;});
+		if(v==4){
+			c._listen('input',()=>{c._item._sendAction(c.innerText)});
+		}else if(v==3){
+			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault()}});
+			c._listen('input',()=>{c._item._sendAction(c.innerText)});
+		}else if(v==2){
+			c._listen('blur',()=>{c._item._sendAction(c.innerText)});
+		}else{
+			c._listen('blur',()=>{c._item._sendAction(c.innerText)});
+			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault();c._item._sendAction(c.innerText)}});
+		}
+	}else if(c.getAttribute('contenteditable')){
+		c.removeAttribute('contenteditable');
+		c.innerHTML=c.innerText;
+	}
+};
+//////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////////////
+// table
+addCSS(`
+	[type="table"] {display:flex;flex-direction:column}
+	[type="table"] > div {overflow:auto;flex:1 1 auto}
+	table { 
+		border-spacing: 0;
+		border-collapse: collapse;
+	}
+	table[head="1"] > tr:first-child {
+		z-index:11;
+	}
+	table[head="1"] > tr:first-child > * {
+		font-weight:bold;
+		background:var(--colorHead);
+		z-index:12;
+		vertical-align:bottom
+		border-bottom:solid 2px gray;
+	}
+	tr:not([id]):not([title]):before {content: ""}
+	td {z-index:9}
+`);
+gui.Table=class extends gui.Container{
+	_initContent(){
+		this._element=document.createElement('div');											//make element inside parent
+		this._tableFrame=this._element.appendChild(document.createElement('div'));
+		this._tableFrame.style.overflow='auto';
+		this._content=this._tableFrame.appendChild(document.createElement('table'));				//e.v is a sub-element where content is displayed
+		// this._content=this._element.appendChild(document.createElement('table'));				//e.v is a sub-element where content is displayed
+		this._parent._placeChildElement(this);
+		this._childmap={};
+	}
+	_newChild(prop){
+		var type=gui.getType(prop);
+		if(!type){
+			type=gui.Container;
+			prop.v=[];
+		}
+		if(type==gui.Container){
+			var child=new gui.TableRow(prop,this);
+			if(typeof(prop.id)!=='number')this._childmap[prop.id]=child;
+		}
+	}
+	_typeCheck(type){return (!type)||(type===this.constructor)||(type===gui.Container);}
+}
+gui.Table.prototype.type='table';
+gui.TableRow=class extends gui.Container{
+	_initContent(){
+		this._element=document.createElement('tr');				//e.v is a sub-element where content is displayed
+		this._content=this._element;
+		this._parent._placeChildElement(this);
+		this._childmap={};
+	}
+	_placeChildElement(child){
+		var td=this._content.appendChild(document.createElement('td'));
+		td.appendChild(child._element);
+		child._outterElement=td;
+	}
+	_typeCheck(type){return (!type)||(type===this.constructor)||(type===gui.Container);}
+}
+gui.TableRow.prototype.type='tableRow';
+gui.Table.prototype._floatRow=function(e){
+	var translate=this.scrollTop?"translate(0,"+(this.scrollTop-3)+"px)":null;
+	var p=this.firstChild.firstChild.querySelectorAll('td');
+	for(var i in p)if(p[i] && p[i].style)p[i].style.transform = translate;
+}
+gui.Table.prototype.head=function(v){
+	this._setAttrC('head',v);
+	if(v)this._tableFrame.addEventListener('scroll',this._floatRow);
+	else{
+		this._content.firstChild.style.transform=null;
+		this._tableFrame.removeEventListener('scroll',this._floatRow);
+	}
+}
+//////////////////////////////////////////////////////////////////////////////
+
+
