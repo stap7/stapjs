@@ -166,8 +166,6 @@ function gui(data){
 			gui.rootContainer._update(data);
 		}
 	}
-	//TODO: scrolling below
-	// if(rootContainer._options.scroll&2)window.scrollTo(0,document.body.scrollHeight);
 }
 
 gui.REQUIRED={
@@ -354,26 +352,22 @@ addCSS(`
 		position:relative;
 		box-sizing:border-box;
 		font-size:98%;
-		z-index:10;
 		flex:0 0 auto;
 	}
 	body {
 		background-color:var(--color0);
 		color:var(--color1);
 		font-size:16pt;
+		white-space:normal;
 	}
 	div {
 		margin:2px;
 		margin-top:7px;
 	}
-	[title]:not([title=""]):before, [id]:not([title]):before {
-		border-bottom:solid 1px var(--colorBorder);
-		width:25%;
+	.title:not(empty) {
 		white-space:nowrap;
 		display:inline-block;
 	}
-	[title]:before {content: attr(title) ""}
-	[id]:not([title]):before {content: attr(id) ""}
 	[v] {margin-left:5px;overflow:auto}
 `);
 gui.Item=class{
@@ -381,11 +375,15 @@ gui.Item=class{
 		this._parent=parent;																//pointer to parent
 		this._initContent();																//make e.v, the element where content is displayed
 		this._setAttrC('v','');																//attribute _ signifies that this is the content (useful for CSS)
+		this._title.className='title';
 		this._content._item=this._element._item=this._outterElement._item=this;
 		this._setAttr('type',this.type);													//attribute type signifies type (useful for CSS)
 		this._level=parent._level+1;
 		this._setAttr('level',this._level);													//attribute type signifies type (useful for CSS)
-		if(prop.id)this._setAttr('id',prop.id);												//set id
+		if(prop.id){
+			this._setAttr('id',prop.id);													//set id
+			this.title(prop.id);
+		}
 		this._prop={};
 		this._update(prop);																	//refresh attributes based on self and parent property values
 		prop=this._getParentProps();
@@ -393,7 +391,8 @@ gui.Item=class{
 			this._refreshProp(propName,prop[propName]);
 	}
 	_initContent(){
-		this._element=document.createElement('div');										//make element inside parent
+		this._element=document.createElement('div');										//make element
+		this._title=this._element.appendChild(document.createElement('div'));
 		this._content=this._element.appendChild(document.createElement('div'));				//e.v is a sub-element where content is displayed
 		this._parent._placeChildElement(this);
 	}
@@ -479,7 +478,17 @@ gui.Item=class{
 		}else if(query.constructor===Object){
 			for(var q in query)
 				if(q==='type'){
-					if(query.type!==this.type)return false;
+					if(this.type==='text'){
+						if(query.type!=="")return false;
+					}else if(this.type==='number'){
+						if(query.type.constructor!==Number)return false;
+					}else if(this.type==='boolean'){
+						if(query.type.constructor!==Boolean)return false;
+					}else if(this.type==='container'){
+						if(query.type.constructor!==Array)return false;
+					}else if(query.type!==this.type){
+						return false;
+					}
 				}else{
 					if(query[q]!==this._prop[q])return false;
 				}
@@ -499,12 +508,14 @@ gui.Item=class{
 	}
 	v(v){this._setAttrC('v',v);}
 	id(){}
-	title(v){this._setAttr('title',v);}
+	title(v){this._title.innerText=(v===null||v===undefined)?this._prop.id:v;}
 }
 gui.types={};
 //////////////////////////////////////////////////////////////////////////////
 // text items
 addCSS(`
+	[type='text'] > .title:empty {display:none}
+	[type='text'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
 	[type='text'] > [v]:empty:before {content: attr(v) " ";display:inline-block;}
 `);
 gui.Text=class extends gui.Item{}
@@ -512,6 +523,8 @@ gui.Text.prototype.type='text';
 //////////////////////////////////////////////////////////////////////////////
 // number items
 addCSS(`
+	[type='number'] > .title:empty {display:none}
+	[type='number'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
 	[type='number'] > [v]:empty:before {content: attr(v) " ";display:inline-block;}
 `);
 gui.Number=class extends gui.Item{
@@ -521,14 +534,9 @@ gui.Number.prototype.type='number';
 //////////////////////////////////////////////////////////////////////////////
 // boolean items
 addCSS(`
-	[type="boolean"]:before{
-		width:auto !important;
-	}
 	[type="boolean"]{
-		display:block;
 		text-align:left;
 		cursor:pointer;
-		!important 
 	}
 	[type="boolean"]:active, [type="boolean"][v="true"] {
 		background-color:var(--colorTrue) !important;
@@ -546,18 +554,20 @@ addCSS(`
 		vertical-align:middle;
 		border-radius:4px;
 	}
+	[type="boolean"][select="1"], [type="boolean"][select="2"] {
+		display:block;
+	}
 	[type="boolean"][select="1"][v="false"]:before {content:"\\029be" " ";display:inline; !important}
 	[type="boolean"][select="1"][v="true"]:before {content:"\\029bf" " ";display:inline; !important}
 	[type="boolean"][select="2"][v="false"]:before {content:"\\2610" " ";display:inline; !important}
 	[type="boolean"][select="2"][v="true"]:before {content:"\\2611" " ";display:inline; !important}
 	[type="boolean"][eB="0"] {pointer-events:none; opacity:.5; contenteditable:false}
-	[type="boolean"][select="1"][title]:after , [type="boolean"][select="2"][title]:after {content: attr(title) ""}
-	[type="boolean"][select="1"][id]:not([title]):after , [type="boolean"][select="2"][id]:not([title]):after {content: attr(id) ""}
 `);
 gui.Boolean=class extends gui.Item{
 	_initContent(){
 		this._element=document.createElement('div');			//make element inside parent
 		this._content=this._element;
+		this._title=this._element;
 		this._parent._placeChildElement(this);
 	}
 	v(v){
@@ -631,6 +641,10 @@ gui.Boolean.prototype.select=function(v){
 };
 //////////////////////////////////////////////////////////////////////////////
 // containers
+addCSS(`
+	[type='container'] > .title:empty {display:none}
+	[type='container'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+`);
 gui.Container=class extends gui.Item{
 	_initContent(){
 		super._initContent();
@@ -683,10 +697,12 @@ gui.Container=class extends gui.Item{
 				this._processChild(child,Object.assign({},prop));
 		}else{
 			for(child of this){
-				if(prop.$===true||child._match(prop.$))
-					this._processChild(child,Object.assign({},prop));
-				if(child instanceof gui.Container)
-					child._search(prop);
+				if(child){
+					if(prop.$===true||child._match(prop.$))
+						this._processChild(child,Object.assign({},prop));
+					if(child instanceof gui.Container)
+						child._search(prop);
+				}
 			}
 		}
 	}
@@ -718,14 +734,16 @@ gui.Container=class extends gui.Item{
 			}
 		}
 	}
-	v(updates){		//cycle through all updates for this container
-		for(var i of updates)this._processProp(gui.prop(i));
-	}
 	_default(propValue,propName){
 		for(var child of this){
-			if(propName in child)child[propName](propValue);
-			else child._default(propValue,propName);
+			if(child){
+				if(propName in child && !(propName in child._prop))child[propName](propValue);
+				else child._default(propValue,propName);
+			}
 		}
+	}
+	v(updates){		//cycle through all updates for this container
+		for(var i of updates)this._processProp(gui.prop(i));
 	}
 }
 gui.Container.prototype.type='container';
@@ -733,7 +751,6 @@ gui.Container.prototype.type='container';
 
 //////////////////////////////////////////////////////////////////////////////
 // onload: initiate rootContainer and connect to task software
-logToConsole(); //TODO: get rid of this before commit
 (function(){
 	//////////////////////////////////////////////////////////////////////////////
 	// init window and connect to task
@@ -789,51 +806,31 @@ logToConsole(); //TODO: get rid of this before commit
 		if(task.start)task.start();
 	}
 	function connectToTaskHTTP(){
-		
-		function urlWithQuery(url){
-			var i=url.indexOf('?');
-			if(i===-1)return url+'?callback=recv&';
-			if(i===url.length-1 || url.endsWith('&'))return url+'callback=recv&';
-			return url+'&callback=recv&';
-		}
-		
-		function urijson(data){return encodeURIComponent(JSON.stringify(data));}
-
-		gui.action = function(time,id,val){
-			var s=document.createElement('script');
-			s.src=task.location+'d='+urijson([time,id,val])+(task.callbackState===undefined?'':('&s='+urijson(task.callbackState)));
-			s.onerror=function(e){console.log("Error loading "+task.location,e)}
-			if(document.head._taskscript){
-				s.onload=function(){
-					document.head.removeChild(s);
-				};
-			}else{  //first message
-				document.head._taskscript=true;
-				s.onload=function(){
-					document.head.removeChild(s);
-					//check if task code is client-side 
-					if(task.userAction){
-						connectToTaskScript();
-					}
-				};
-			}
-			document.head.appendChild(s);
-		}
-		
-		recv = function(data,state){
-			try{								//redirect
-				var url=new URL(data);
-				task.location=urlWithQuery(url.origin+url.pathname);
-				onTaskConnect();
-			}catch(e){							//parse task message
-				task.callbackState=state;
-				gui(data);
+		function onReady(){
+			if(this.readyState==4 && this.status==200){
+				var parrot,append;
+				this.getAllResponseHeaders().split('\n').forEach(line=>{
+					if(line.substr(0,9).toLowerCase()==('x-parrot:'))parrot=line.substr(10);
+					if(line.substr(0,16).toLowerCase()==('x-append-to-url:'))append=line.substr(17);
+				});
+				gui.httpParrotHeader=parrot;
+				gui.httpAppendToURL=append;
+				try{gui(JSON.parse(this.responseText));}
+				catch(e){console.error('Could not parse response.\n',this.responseText);}
 			}
 		}
-
-		task.location=urlWithQuery(task.location);
+		function post(url,body=''){
+			var xhttp = new XMLHttpRequest();
+			xhttp.onreadystatechange = onReady;
+			if(gui.httpAppendToURL)url+=(url.indexOf('?')==-1?'?':'&')+gui.httpAppendToURL;
+			xhttp.open("POST",url, true);
+			if(gui.httpParrotHeader)xhttp.setRequestHeader('X-parrot',gui.httpParrotHeader);
+			xhttp.send(body);
+		}
+		gui.action=function(time,id,val){
+			post(task.location,JSON.stringify([time,id,val]));
+		}
 		onTaskConnect();
-
 	}
 	function connectToTaskWS(){
 		logToConsole();
@@ -1125,26 +1122,19 @@ addCSS(`
 		border-spacing: 0;
 		border-collapse: collapse;
 	}
-	table[head="1"] > tr:first-child {
-		z-index:11;
-	}
 	table[head="1"] > tr:first-child > * {
 		font-weight:bold;
 		background:var(--colorHead);
-		z-index:12;
-		vertical-align:bottom
-		border-bottom:solid 2px gray;
+		z-index:1;
 	}
-	tr:not([id]):not([title]):before {content: ""}
-	td {z-index:9}
 `);
 gui.Table=class extends gui.Container{
 	_initContent(){
 		this._element=document.createElement('div');											//make element inside parent
+		this._title=this._element.appendChild(document.createElement('span'));
 		this._tableFrame=this._element.appendChild(document.createElement('div'));
 		this._tableFrame.style.overflow='auto';
 		this._content=this._tableFrame.appendChild(document.createElement('table'));				//e.v is a sub-element where content is displayed
-		// this._content=this._element.appendChild(document.createElement('table'));				//e.v is a sub-element where content is displayed
 		this._parent._placeChildElement(this);
 		this._childmap={};
 	}
@@ -1165,6 +1155,7 @@ gui.Table.prototype.type='table';
 gui.TableRow=class extends gui.Container{
 	_initContent(){
 		this._element=document.createElement('tr');				//e.v is a sub-element where content is displayed
+		this._title=this._element.appendChild(document.createElement('td'));
 		this._content=this._element;
 		this._parent._placeChildElement(this);
 		this._childmap={};
