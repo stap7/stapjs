@@ -162,7 +162,18 @@ function gui(data){
 		if('$' in data){
 			gui.rootContainer._search(data);
 		}else{
+			if('id' in data){
+				console.warn('Property "id":<<id>> is not valid at root.\nTry encomassing in square brackets:\n  ['+JSON.stringify(data)+']');
+				delete data.id;
+			}
 			//update display properties
+			if(data.v===null){
+				gui.rootContainer._search({$:{},v:null});
+				delete data.v;
+			}else if('v' in data && data.v.constructor!==Array){
+				console.warn('Property "v":<<value>> *must* be of type array at root.');
+				delete data.v;
+			}
 			gui.rootContainer._update(data);
 		}
 	}
@@ -209,7 +220,7 @@ gui.color=v=>gui.getColor(v)?`var(--color${v})`:v;
 
 //////////////////////////////////////////////////////////////////////////////
 // task (root-level container)
-gui.error=function(v){console.log('ERROR: '+v);}
+gui.error=function(v){console.error('ERROR: '+v);}
 gui.require=function(require){
 	var errors,quit=false,errorScreen=[];
 	var TYPES=new Set([gui.Item,gui.Text,gui.Number,gui.Boolean,gui.Container]);
@@ -333,21 +344,20 @@ gui.template=function(v){load(v);}
 // prototypical gui item
 addCSS(`
 	:root {
-	  --color0: white;
-	  --colorHead: #f0f8f8;
-	  --colorBorder: #e8e8e8;
-	  --colorFalse: #f8f8f8;
-	  --colorTrue: lightblue;
-	  --color1: #444444;
-	  --color2: #0099ff;
-	  --color3: #ff9900;
-	  --color4: #99ff99;
-	  --color5: blue;
-	  --color6: red;
-	  --color7: green;
+		--color0: white;
+		--colorHead: #f0f8f8;
+		--colorBorder: #e8e8e8;
+		--colorFalse: #f8f8f8;
+		--colorTrue: lightblue;
+		--color1: #444444;
+		--color2: #0099ff;
+		--color3: #ff9900;
+		--color4: #99ff99;
+		--color5: blue;
+		--color6: red;
+		--color7: green;
 	}
 	* {
-		white-space:pre-wrap;
 		font-size:14pt;
 		position:relative;
 		box-sizing:border-box;
@@ -358,7 +368,6 @@ addCSS(`
 		background-color:var(--color0);
 		color:var(--color1);
 		font-size:16pt;
-		white-space:normal;
 	}
 	div {
 		margin:2px;
@@ -473,11 +482,21 @@ gui.Item=class{
 	}
 	_match(query){
 		if(query.constructor===String){
-			if(this._prop.id===query)return true;
+			if((this._prop.id||'')===query)return true;
 			if(this._prop['#']&&this._prop['#'].indexOf(query)>-1)return true;
 		}else if(query.constructor===Object){
-			for(var q in query)
-				if(q==='type'){
+			for(var q in query){
+				if(q==='id'){
+					if(query.id.constructor===Number){
+						if(this._getIndex()!==query.id)return false;
+					}else if(!query.id){
+						if(this._prop.id)return false;
+					}else if(query.id!==this._prop.id)
+						return false;
+				}else if(q==='#'&&query.q){
+					if(this._prop['#']&&this._prop['#'].indexOf(query)>-1)return true;
+					return false;
+				}else if(q==='type'){
 					if(this.type==='text'){
 						if(query.type!=="")return false;
 					}else if(this.type==='number'){
@@ -492,7 +511,10 @@ gui.Item=class{
 				}else{
 					if(query[q]!==this._prop[q])return false;
 				}
+			}
 			return true;
+		}else if(query.constructor===Number){
+			return this._getIndex()===query;
 		}
 	}
 	_sendAction(v){
@@ -501,22 +523,21 @@ gui.Item=class{
 			var fullname=[elementid];
 			for(var i=0,parent=this._parent;parent && (i++)<this._patronym;parent=parent._parent)
 				fullname.push(parent._prop.id||parent._getIndex());
-			elementid=fullname.length>1?fullname:elementid;
+			if(fullname.length>1)elementid=fullname.reverse();
 		}
 		gui.sendAction(elementid,v);
 		this.O();
 	}
-	v(v){this._setAttrC('v',v);}
+	v(v){this._content.innerText=v;}
 	id(){}
 	title(v){this._title.innerText=(v===null||v===undefined)?this._prop.id:v;}
 }
-gui.types={};
 //////////////////////////////////////////////////////////////////////////////
 // text items
 addCSS(`
 	[type='text'] > .title:empty {display:none}
 	[type='text'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
-	[type='text'] > [v]:empty:before {content: attr(v) " ";display:inline-block;}
+	[type='text'] > [v] {white-space:pre-wrap;}
 `);
 gui.Text=class extends gui.Item{}
 gui.Text.prototype.type='text';
@@ -525,7 +546,6 @@ gui.Text.prototype.type='text';
 addCSS(`
 	[type='number'] > .title:empty {display:none}
 	[type='number'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
-	[type='number'] > [v]:empty:before {content: attr(v) " ";display:inline-block;}
 `);
 gui.Number=class extends gui.Item{
 	_animatable(propName){return propName==='v' || gui.ANIMATABLE.has(propName)}
@@ -537,6 +557,7 @@ addCSS(`
 	[type="boolean"]{
 		text-align:left;
 		cursor:pointer;
+		user-select: none;
 	}
 	[type="boolean"]:active, [type="boolean"][v="true"] {
 		background-color:var(--colorTrue) !important;
@@ -571,72 +592,69 @@ gui.Boolean=class extends gui.Item{
 		this._parent._placeChildElement(this);
 	}
 	v(v){
-		this._setAttrC('v',v);
-		if(v && this._prop.select==-1){
-			var e=this;
-			e._prop.v=false;
-			setTimeout(function(){e._setAttrC('v',false);},250);
+		if(this._attr('select')){
+			this._setAttrC('v',v);
+			if(this._attr('select')=='-1'){
+				if(v){
+					var e=this;
+					e._prop.v=false;
+					setTimeout(function(){e._setAttrC('v',false);},200);
+				}
+			}else if(this._attr('select')=='1'){
+				var selectParent=this._parent;
+				while(selectParent._prop.select!==1 && selectParent!==gui.rootContainer)
+					selectParent=selectParent._parent;
+				if(selectParent._prop.select!==1)selectParent=e._parent;
+				if(v){
+					if(selectParent._selected && selectParent._selected!==this){
+						selectParent._selected._prop.v=false;
+						selectParent._selected._setAttrC('v',false);
+					}
+					selectParent._selected=this;
+				}else if(selectParent._selected===this){
+					selectParent._selected=false;
+				}
+			}
 		}
 	}
 }
 gui.Boolean.prototype.type="boolean";
 gui.Boolean.prototype.eB=function(v){this._setAttr('eB',v);};
 gui.Boolean.prototype.select=function(v){
-	this._setAttr('select',v);
-	var item=this;
-	this.v=this.__proto__.v;
-	if(v===0){
-		this._element.onclick=null;
-		this._element.onmousedown=function(){					//onmousedown behavior
-			item._value(true);
-			item._sendAction(true);
-		}
-		this._element.onmouseup=function(){						//onmouseup behavior
-			item._value(false);
-			item._sendAction(false);
-		}
-	}else{
-		this._element.onmousedown=this._element.onmouseup=null;
-		if(v===-1){
-			this._element.onclick=function(){						//onclick behavior
+	if(String(v)!=this._attr('select')){
+		this._setAttr('select',v);
+		var item=this;
+		this.v=this.__proto__.v;
+		if(v===0){
+			this._element.onclick=null;
+			this._element.onmousedown=function(){							//onmousedown behavior
+				item._value(true);
 				item._sendAction(true);
 			}
-			this.v=function(v){
-				this._setAttrC('v',v);
-				if(v){
-					this._prop.v=false;
-					setTimeout(function(){item._setAttrC('v',false);},250);
-				}
+			this._element.onmouseup=function(){								//onmouseup behavior
+				item._value(false);
+				item._sendAction(false);
 			}
-		}else if(v===1){
-			//TODO: when switch to this from v===2, clear all (but 1?) selections
-			this._element.onclick=function(){									//select/deselect behavior
-				var selectParent=item._parent;
-				while(selectParent._prop.select!==1 && selectParent!==gui.rootContainer)
-					selectParent=selectParent._parent;
-				if(selectParent._prop.select!==1)selectParent=e._parent;
-				if(item._prop.v){
-					item._sendAction(false);
-					item._value(false);
-					selectParent._selected=false;
-				}else{
+		}else{
+			this._element.onmousedown=this._element.onmouseup=null;
+			if(v<0){
+				this._element.onclick=function(){							//onclick behavior
 					item._sendAction(true);
-					item._value(true);
-					if(selectParent._selected)selectParent._selected._value(false);
-					selectParent._selected=item;
 				}
-			};
-		}else if(v===2){
-			this._element.onclick=function(){									//select/deselect behavior
-				if(item._prop.v){
-					item._sendAction(false);
-					item._value(false);
-				}else{
-					item._sendAction(true);
-					item._value(true);
-				}
-			};
+			}else{
+				this._element.onclick=function(){							//select/deselect behavior
+					if(item._prop.v){
+						item._sendAction(false);
+						item._value(false);
+					}else{
+						item._sendAction(true);
+						item._value(true);
+					}
+				};
+			}
 		}
+		if('v' in this._prop)
+			this.v(this._prop.v);
 	}
 };
 //////////////////////////////////////////////////////////////////////////////
@@ -691,18 +709,17 @@ gui.Container=class extends gui.Item{
 		}
 	}
 	_search(prop){
-		var child;
-		if(prop.$===false){
-			for(child of this)
-				this._processChild(child,Object.assign({},prop));
-		}else{
-			for(child of this){
-				if(child){
-					if(prop.$===true||child._match(prop.$))
-						this._processChild(child,Object.assign({},prop));
-					if(child instanceof gui.Container)
-						child._search(prop);
-				}
+		var recur=1;
+		if(prop.$.constructor===Object&&('recur' in prop.$)){
+			recur=prop.$.recur;
+			delete prop.$.recur;
+		}
+		for(var child of this){
+			if(child){
+				if(child._match(prop.$))
+					this._processChild(child,Object.assign({},prop));
+				if(recur && (child instanceof gui.Container))
+					child._search(prop);
 			}
 		}
 	}
@@ -724,6 +741,15 @@ gui.Container=class extends gui.Item{
 		}else{
 			var child;
 			if('id' in prop){
+				if(prop.id.constructor===Array&&prop.id.length){
+					if(prop.id.length===1){
+						prop.id=prop.id[0];
+					}else{
+						var id=prop.id[0];
+						prop.id=prop.id.slice(1);
+						prop={v:[prop],id:id};
+					}
+				}
 				child=this._getChild(prop.id);
 				if(prop.id.constructor===Number)delete prop.id;
 			}
@@ -879,6 +905,15 @@ gui.Container.prototype.type='container';
 // additional common options
 
 gui.Item.prototype.P=function(v){
+	if(v.constructor===Array){
+		var child;
+		for(var i=v[1]-1;i>=v[0];--i){
+			child=this._parent._getChild(i);
+			if(child._prop.id)delete this._parent._childmap[child._prop.id];
+			this._parent._content.removeChild(child._outterElement);
+		}
+		v=v[0];
+	}
 	var insertBefore=this._parent._getChild(v);
 	if(insertBefore)this._parent._content.insertBefore(this._outterElement,insertBefore._outterElement);
 };
@@ -898,6 +933,8 @@ gui.Item.prototype.O=function(){
 		}
 	}
 }
+
+//gui.Item.prototype.e=function(v){}
 
 gui.Text.prototype.onedit=function(v){this._onedit=v;};
 gui.Number.prototype.onedit=gui.Text.prototype.onedit;
@@ -952,7 +989,7 @@ gui.Item.prototype.rot=function(v){this._element.style.setProperty('transform','
 
 addCSS(`
 	[x],[y] {position:absolute;margin:0px}
-	[childPos] > [v] {margin:0px;position:absolute;top:0px;left:0px;overflow:visible}
+	[childPos] > [v] {margin:0px;position:absolute;top:0px;left:0px;width:100%;height:100%;overflow:visible}
 `);
 gui.Container.prototype._hasPositionedElements=function(){	//enables Item.x and Item.y behavior
 	for(var i of this)
@@ -1000,23 +1037,28 @@ gui.Text.prototype.eT=function(v){
 	var c=this._content;
 	c._removeListeners();
 	if(v>0){
-		c.setAttribute('contenteditable',v>0);
+		c.setAttribute('contenteditable',true);
 		c._listen('paste',function(e){
 			e.preventDefault();
 			var txt=e.clipboardData.getData("text/plain");
 			document.execCommand("insertText",false,(v&1)?txt.replace(/\n|\r/g,' '):txt);
 		});
-		c._listen('input',()=>{c.setAttribute('v',c.innerText);c._item._prop.v=c.innerText;});
+		function send(){
+			if(c.innerText!=c._item._prop.v){
+				c._item._value(c.innerText);
+				c._item._sendAction(c.innerText);
+			}
+		}
 		if(v==4){
-			c._listen('input',()=>{c._item._sendAction(c.innerText)});
+			c._listen('input',send);
 		}else if(v==3){
 			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault()}});
-			c._listen('input',()=>{c._item._sendAction(c.innerText)});
+			c._listen('input',send);
 		}else if(v==2){
-			c._listen('blur',()=>{c._item._sendAction(c.innerText)});
+			c._listen('blur',send);
 		}else{
-			c._listen('blur',()=>{c._item._sendAction(c.innerText)});
-			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault();c._item._sendAction(c.innerText)}});
+			c._listen('blur',send);
+			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault();send();}});
 		}
 	}else{
 		c.removeAttribute('contenteditable');
@@ -1034,7 +1076,7 @@ gui.Number.prototype.eN=function(v){
 	var c=this._content;
 	c._removeListeners();
 	if(v>0){
-		c.setAttribute('contenteditable',v>0);
+		c.setAttribute('contenteditable',true);
 		c._listen('paste',(e)=>{
 			e.preventDefault();
 			var v=parseFloat(e.clipboardData.getData("text/plain"));
@@ -1042,9 +1084,8 @@ gui.Number.prototype.eN=function(v){
 				document.execCommand("insertText", false, v);
 		});
 		function send(){
-			if(c.innerText && c.innerText!=c.getAttribute('v')){
-				c._value(parseFloat(c.innerText));
-				c.innerText='';
+			if(c.innerText!=c._item._prop.v){
+				c._item._value(parseFloat(c.innerText));
 				c._item._sendAction(c._item._prop.v);
 			}
 		}
@@ -1067,55 +1108,68 @@ gui.Number.prototype.min=function(v){this._min=(v===null)?undefined:v;this.v(thi
 gui.Number.prototype.rnd=function(v){this._rnd=(v===null)?undefined:v;this.v(this._prop.v);};
 gui.Number.prototype.time=function(v){this._setAttr('time',v);this.v(this._prop.v);};
 gui.Number.prototype.v=function(v){
+	if(!v)v=0;
 	if(this._min!==undefined)v=Math.max(v,this._min);
 	if(this._max!==undefined)v=Math.min(v,this._max);
 	if(this._rnd!==undefined)v=Math.round2(v,this._rnd);
 	if(this._attr('time'))v=new Date(v*1000).format(this._attr('time'));
-	this._setAttrC('v',v);
+	this._content.innerText=v;
 }
 //////////////////////////////////////////////////////////////////////////////
 
 
 //////////////////////////////////////////////////////////////////////////////
 // html
+addCSS(`
+	[type='html'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+	[type='html'] > [v] {white-space:normal;}
+`);
 gui.Html=class extends gui.Text{
 	v(v){this._content.innerHTML=v;}
+	_typeCheck(type){return (!type)||(type===this.constructor)||(type===gui.Text);}
 }
 gui.Html.prototype.type='html';
 gui.Html.prototype.eT=function(v){
 	var c=this._content;
 	c._removeListeners();
 	if(v>0){
-		c.setAttribute('contenteditable',v>0);
-		c.innerText=c.innerHTML;
+		c.setAttribute('contenteditable',true);
+		c.innerText=c._item._prop.v;
 		c._listen('paste',function(e){
 			e.preventDefault();
 			var txt=e.clipboardData.getData("text/plain");
 			document.execCommand("insertText",false,(v&1)?txt.replace(/\n|\r/g,' '):txt);
 		});
-		c._listen('input',()=>{c.setAttribute('v',c.innerText);c._item._prop.v=c.innerText;});
+		function send(){
+			if(c.innerText!=c._item._prop.v){
+				c._item._prop.v=c.innerText;
+				c._item._sendAction(c.innerText);
+			}
+		}
 		if(v==4){
-			c._listen('input',()=>{c._item._sendAction(c.innerText)});
+			c._listen('input',send);
 		}else if(v==3){
 			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault()}});
-			c._listen('input',()=>{c._item._sendAction(c.innerText)});
+			c._listen('input',send);
 		}else if(v==2){
-			c._listen('blur',()=>{c._item._sendAction(c.innerText)});
+			c._listen('blur',send);
 		}else{
-			c._listen('blur',()=>{c._item._sendAction(c.innerText)});
-			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault();c._item._sendAction(c.innerText)}});
+			c._listen('blur',send);
+			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault();send();}});
 		}
 	}else if(c.getAttribute('contenteditable')){
 		c.removeAttribute('contenteditable');
-		c.innerHTML=c.innerText;
+		c.innerHTML=c._item._prop.v;
 	}
 };
+
 //////////////////////////////////////////////////////////////////////////////
 
 
 //////////////////////////////////////////////////////////////////////////////
 // table
 addCSS(`
+	[type="table"] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
 	[type="table"] {display:flex;flex-direction:column}
 	[type="table"] > div {overflow:auto;flex:1 1 auto}
 	table { 
@@ -1130,11 +1184,11 @@ addCSS(`
 `);
 gui.Table=class extends gui.Container{
 	_initContent(){
-		this._element=document.createElement('div');											//make element inside parent
+		this._element=document.createElement('div');
 		this._title=this._element.appendChild(document.createElement('span'));
 		this._tableFrame=this._element.appendChild(document.createElement('div'));
 		this._tableFrame.style.overflow='auto';
-		this._content=this._tableFrame.appendChild(document.createElement('table'));				//e.v is a sub-element where content is displayed
+		this._content=this._tableFrame.appendChild(document.createElement('table'));
 		this._parent._placeChildElement(this);
 		this._childmap={};
 	}
@@ -1181,6 +1235,43 @@ gui.Table.prototype.head=function(v){
 		this._tableFrame.removeEventListener('scroll',this._floatRow);
 	}
 }
+//////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////////////
+// path
+addCSS(`
+	.path.content {height:100px;}
+	svg {position:absolute;left:0px;top:0px;width:100%;height:100%;}
+	[type="path"] {width:100px;height:100px;}
+`);
+var SVGNS="http://www.w3.org/2000/svg";
+gui.Path=class extends gui.Item{
+	_initContent(){
+		this._element=document.createElement('div');
+		this._title=this._element.appendChild(document.createElement('span'));
+		this._svg=this._element.appendChild(document.createElementNS(SVGNS,'svg'));
+		this._svg.setAttribute('viewBox','0 0 100 100');
+		this._svg.setAttribute('preserveAspectRatio','none');
+		this._content=this._svg.appendChild(document.createElementNS(SVGNS,'path'));
+		this._content.setAttribute('stroke-width',1);
+		this._content.setAttribute('stroke','black');
+		this._content.setAttribute('fill','none');
+		this._parent._placeChildElement(this);
+	}
+	_typeCheck(type){return (!type)||(type===this.constructor)||(type===gui.Container)||(type===gui.Text);}
+	v(v){
+		if(v.constructor==Array){
+			var d=this._attrC('d');
+			if(d)this._setAttrC('d',d+" "+v.join(' '));
+			else if(v[0].constructor===Number)this._setAttrC('d',"M"+v.join(' '));
+			else this._setAttrC('d',v.join(' '));
+		}else if(v.constructor==String)
+			this._setAttrC('d',v);
+	}
+}
+gui.Path.prototype.type='path';
+gui.Path.prototype.c=function(v){this._setAttrC('stroke',gui.color(v));};
 //////////////////////////////////////////////////////////////////////////////
 
 
