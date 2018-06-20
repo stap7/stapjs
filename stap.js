@@ -1,7 +1,14 @@
-/*base html5 template for STAP (v7.10) visualization
+/*base html5 template for STAP (v7.11) visualization
 
 	What is STAP? 
 		http://vdv7.github.io/stap/
+
+
+	Are all optional UI component types and properties from the STAPv7.11 spec implemented in stapjs?
+		Not yet.
+			The STAP API does not require for all features to be implemented on user-agent software.
+			Any features that are required by task-side software (declared via the "require" command)
+			that are yet to be implemented will send an {"error":"..."} message back to task-side software.
 
 
 	Logging data:
@@ -58,7 +65,7 @@ function load(urls, callback, onerror, type){
 	}else{
 		try{eval(url);}
 		catch(e){
-			console.log('Not sure how to handle '+url+'.\nWill try to add as <style>...');
+			console.warn('Not sure how to handle '+url+'.\nWill try to add as <style>...');
 			addCSS(url);
 		}
 		onload();
@@ -141,61 +148,39 @@ var task={},ws,recv;
 
 function gui(data){
 	logline('>',data);
-	if(data===null){
-		gui.rootContainer._content.innerHTML='';
-		gui.rootContainer._childmap={};
-	}else if(data.constructor===Array){
-		gui.rootContainer._value(data);
-	}else if(typeof(data)==="object"){
-		if(data.U){		//optional delay
-			let delay=data.U-ums();
-			delete data.U;
-			setTimeout(function(){gui(data);},delay);
-			return;
-		}
-		if(data.T){		//optional delay
-			let delay=data.T*1000;
-			delete data.T;
-			setTimeout(function(){gui(data);},delay);
-			return;
-		}
-		if('$' in data){
-			gui.rootContainer._search(data);
-		}else{
-			if('id' in data){
-				console.warn('Property "id":<<id>> is not valid at root.\nTry encomassing in square brackets:\n  ['+JSON.stringify(data)+']');
-				delete data.id;
-			}
-			//update display properties
-			if(data.v===null){
-				gui.rootContainer._search({$:{},v:null});
-				delete data.v;
-			}else if('v' in data && data.v.constructor!==Array){
-				console.warn('Property "v":<<value>> *must* be of type array at root.');
-				delete data.v;
-			}
-			gui.rootContainer._update(data);
-		}
+	data=gui.prop(data);
+	if('id' in data){
+		if(data.id.constructor===Array)
+			data.id[0]=0;
+		else
+			data.id=0;
+	}else{
+		data.id=0;
 	}
+	gui.rootOrigin._processProp(data);
 }
 
 gui.REQUIRED={
-	"S":[
-		"https://cdnjs.cloudflare.com/ajax/libs/gsap/1.20.4/TweenLite.min.js",
-		"https://cdnjs.cloudflare.com/ajax/libs/gsap/1.20.4/plugins/ColorPropsPlugin.min.js",
+	S:[
+		"https://cdnjs.cloudflare.com/ajax/libs/gsap/2.0.1/TweenLite.min.js",
+		"https://cdnjs.cloudflare.com/ajax/libs/gsap/2.0.1/plugins/ColorPropsPlugin.min.js",
 		// "https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/plugins/CSSPlugin.min.js",
 		// "https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/plugins/AttrPlugin.min.js",
 		// "https://cdnjs.cloudflare.com/ajax/libs/gsap/1.19.0/plugins/TextPlugin.min.js",
 		"TweenLite.defaultEase = Linear.easeNone;"
 	],
-	"ease":"https://cdnjs.cloudflare.com/ajax/libs/gsap/1.20.4/easing/EasePack.min.js",
-	"easeout":"https://cdnjs.cloudflare.com/ajax/libs/gsap/1.20.4/easing/EasePack.min.js",
+	ease:"https://cdnjs.cloudflare.com/ajax/libs/gsap/2.0.1/easing/EasePack.min.js",
 };
-gui.OPTIONS=new Set(['Q','R','S','T','U']);
-gui.EVENTS=new Set();
+gui.OPTIONS=new Set(['$','O','P','Q','R','S','T','U','ease','easeout']);
+gui.OPTION_VALUES_IMPLEMENTED={
+	select:v=>[-1,0,1,2].indexOf(v)!==-1,
+	e:v=>(v in gui.EVENTS),
+	ease:v=>(v in gui.EASE)
+};
 gui.COLOROPTIONS=new Set(['bg','c','bdc','f']);
 gui.ANIMATABLE=new Set(['x','y','w','h','r','bg','bd','bdw','bdc','pad','c','rot']);
 gui.EASE={0:'Power0',1:'Power1',2:'Power2',3:'Power3',4:'Power4',back:'Back',elastic:'Elastic',bounce:'Bounce'};
+gui.EVENTS={};
 gui.ums=function(){return (new Date()).getTime()-gui.startTime;};
 gui.sendAction=function(id,value){
 	var time=gui.ums();
@@ -217,12 +202,13 @@ gui.getType=function(prop){
 gui.prop=x=>(x===null||x.constructor!==Object)?{v:x}:x;
 gui.getColor=v=>getComputedStyle(document.body).getPropertyValue('--color'+v);
 gui.color=v=>gui.getColor(v)?`var(--color${v})`:v;
+gui.queue={};
 
 //////////////////////////////////////////////////////////////////////////////
 // task (root-level container)
-gui.error=function(v){console.error('ERROR: '+v);}
+gui.error=function(v){console.error(v);}
 gui.require=function(require){
-	var errors,quit=false,errorScreen=[];
+	var errors,errorScreen=[];
 	var TYPES=new Set([gui.Item,gui.Text,gui.Number,gui.Boolean,gui.Container]);
 	if(require.type){
 		errors=[];
@@ -234,43 +220,31 @@ gui.require=function(require){
 		if(errors.length){
 			gui.sendAction(0,{error:'Sorry, I cannot handle the required value type(s): '+errors});
 			errorScreen.push({id:'Cannot handle required value type(s)',v:errors});
-			quit=true;
 		}
 		delete require.type;
 	}
+	//collect all options
+	for(var type of TYPES){
+		for(var propName of Object.getOwnPropertyNames(type.prototype)){
+			if(type.prototype[propName].call && !propName.startsWith("_"))
+				gui.OPTIONS.add(propName);
+		}
+	}
 	if(require.options){
 		errors=[];
-		//collect all options
-		for(var type of TYPES){
-			for(var propName of Object.getOwnPropertyNames(type.prototype)){
-				if(type.prototype[propName].call && !propName.startsWith("_"))
-					gui.OPTIONS.add(propName);
-			}
-		}
 		for(var propName of require.options){
 			if(!gui.OPTIONS.has(propName))
 				errors.push(propName);
 			else if(propName in gui.REQUIRED)
 				load(gui.REQUIRED[propName]);
 			// else if(!markerdefs && require.options[i].startsWith('end'))
-				// initMarkers();
+				// initMarkers(); //TODO: move initMarkers call into REQUIRED
 		}
 		if(errors.length){
 			gui.sendAction(0,{error:'Sorry, I cannot handle the required property option(s): '+errors});
 			errorScreen.push({id:'Cannot handle required property option(s)',v:errors});
-			quit=true;
 		}
 		delete require.options;
-	}
-	if(require.e){
-		//TODO: make sure EVENTS work and are extendable
-		errors=require.e.filter(x=>!gui.EVENTS.has(x));
-		if(errors.length){
-			gui.sendAction(0,{error:'Sorry, I cannot handle the required event(s): '+errors});
-			errorScreen.push({id:'Cannot handle required event(s)',v:errors});
-			quit=true;
-		}
-		delete require.e;
 	}
 	if(require.emphases){
 		errors=[];
@@ -287,7 +261,6 @@ gui.require=function(require){
 		if(errors.length){
 			gui.sendAction(0,{error:'Sorry, I cannot handle required emphasis type(s): '+errors});
 			errorScreen.push({id:'Cannot handle required emphasis type(s)',v:errors});
-			quit=true;
 		}
 		delete require.emphases;
 	}
@@ -299,7 +272,6 @@ gui.require=function(require){
 		if(errors.length){
 			gui.sendAction(0,{error:'Sorry, I cannot handle required color(s): '+errors});
 			errorScreen.push({id:'Cannot handle required color(s)',v:errors});
-			quit=true;
 		}
 		delete require.colors;
 	}
@@ -307,17 +279,27 @@ gui.require=function(require){
 		if(!gui.OPTIONS.has(propName)){
 			gui.sendAction(0,{error:'Sorry, I cannot handle required option: '+propName});
 			errorScreen.push({id:'Cannot handle required property option(s)',v:[propName]});
-			quit=true;
-		}else if(propName in gui.REQUIRED){
-			load(gui.REQUIRED[propName]);
-		}// else if(!markerdefs && require.options[i].startsWith('end'))
-			// initMarkers();
+		}else{
+			if(propName in gui.OPTION_VALUES_IMPLEMENTED){
+				if(require[propName].constructor!==Array)require[propName]=[require[propName]];
+				for(var v of require[propName]){
+					if(gui.OPTION_VALUES_IMPLEMENTED[propName](v)){
+						if(propName in gui.REQUIRED){
+							load(gui.REQUIRED[propName]);
+						}
+					}else{
+						gui.sendAction(0,{error:'Sorry, I cannot handle required option-value: {'+propName+':'+v+'}'});
+						errorScreen.push({id:'Cannot handle required property option(s)',v:['{'+propName+':'+v+'}']});
+					}
+				}
+			}
+		}
 	}
 	if(errorScreen.length){
 		gui(null);
 		gui([{id:'Error',v:errorScreen}]);
+		if(ws)ws.close();
 	}
-	if(quit && ws)ws.close();
 };
 gui.agent=function(v){
 	for(let i of v){
@@ -343,41 +325,25 @@ gui.template=function(v){load(v);}
 //////////////////////////////////////////////////////////////////////////////
 // prototypical gui item
 addCSS(`
-	:root {
-		--color0: white;
-		--colorHead: #f0f8f8;
-		--colorBorder: #e8e8e8;
-		--colorFalse: #f8f8f8;
-		--colorTrue: lightblue;
-		--color1: #444444;
-		--color2: #0099ff;
-		--color3: #ff9900;
-		--color4: #99ff99;
-		--color5: blue;
-		--color6: red;
-		--color7: green;
-	}
-	* {
-		font-size:14pt;
-		position:relative;
-		box-sizing:border-box;
-		font-size:98%;
-		flex:0 0 auto;
-	}
-	body {
-		background-color:var(--color0);
-		color:var(--color1);
-		font-size:16pt;
-	}
-	div {
-		margin:2px;
-		margin-top:7px;
-	}
-	.title:not(empty) {
-		white-space:nowrap;
-		display:inline-block;
-	}
-	[v] {margin-left:5px;overflow:auto}
+:root {
+--color0: white;
+--colorHead: #f0f8f8;
+--colorBorder: #e8e8e8;
+--colorFalse: #f8f8f8;
+--colorTrue: lightblue;
+--color1: #444444;
+--color2: #0099ff;
+--color3: #ff9900;
+--color4: #99ff99;
+--color5: blue;
+--color6: red;
+--color7: green;
+}
+* {font-size:14pt;position:relative;box-sizing:border-box;font-size:98%;flex:0 0 auto;}
+body {background-color:var(--color0);color:var(--color1);font-size:16pt;}
+div {margin:2px;margin-top:7px;}
+.title:not(empty) {white-space:nowrap;display:inline-block;}
+[v] {margin-left:5px;overflow:auto}
 `);
 gui.Item=class{
 	constructor(prop,parent){
@@ -446,19 +412,29 @@ gui.Item=class{
 		//animate properties
 		if(Object.keys(aniopt).length){
 			var ani={};
+			//check easing options
+			if(prop.ease){
+				if(prop.easeout==-1)aniopt.ease=window[gui.EASE[prop.ease]].easeIn;
+				else if(prop.easeout==0)aniopt.ease=window[gui.EASE[prop.ease]].easeInOut;
+				else aniopt.ease=window[gui.EASE[prop.ease]].easeOut;
+				delete prop.ease;
+				delete prop.easeout;
+			}
+			//set up animation 
 			aniopt.onUpdate=function(prop){
 				if(document.body.contains(e._element))e._update(prop);
 				else ani.ani.kill();
 			};
 			aniopt.onUpdateParams=[curopt];
+			//optional receipt once animation ends
 			if(prop.R&2){
 				aniopt.onComplete=function(){gui.sendAction(('Q' in prop)?prop.Q:(e._prop.id||e._getIndex()),[2]);};
 			}
+			//start animation
 			ani.ani=TweenLite.to(curopt,animate,aniopt);
 		}
 	}
 	_update(prop){
-		if(prop.R&1)gui.sendAction(('Q' in prop)?prop.Q:(this._prop.id||this._getIndex()),[1]);
 		if(prop.S)this._animate(prop);
 		Object.assign(this._prop,prop);
 		for(var propName in prop){
@@ -535,17 +511,17 @@ gui.Item=class{
 //////////////////////////////////////////////////////////////////////////////
 // text items
 addCSS(`
-	[type='text'] > .title:empty {display:none}
-	[type='text'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
-	[type='text'] > [v] {white-space:pre-wrap;}
+[type='text'] > .title:empty {display:none}
+[type='text'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+[type='text'] > [v] {white-space:pre-wrap;}
 `);
 gui.Text=class extends gui.Item{}
 gui.Text.prototype.type='text';
 //////////////////////////////////////////////////////////////////////////////
 // number items
 addCSS(`
-	[type='number'] > .title:empty {display:none}
-	[type='number'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+[type='number'] > .title:empty {display:none}
+[type='number'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
 `);
 gui.Number=class extends gui.Item{
 	_animatable(propName){return propName==='v' || gui.ANIMATABLE.has(propName)}
@@ -554,35 +530,15 @@ gui.Number.prototype.type='number';
 //////////////////////////////////////////////////////////////////////////////
 // boolean items
 addCSS(`
-	[type="boolean"]{
-		text-align:left;
-		cursor:pointer;
-		user-select: none;
-	}
-	[type="boolean"]:active, [type="boolean"][v="true"] {
-		background-color:var(--colorTrue) !important;
-	}
-	[type="boolean"][select="-1"], [type="boolean"][select="0"] {
-		min-width:100px;
-		text-align:center;
-		display:inline-block;
-		padding:.4em;
-		color:var(--color1);
-		border:1px solid rgba(0,0,0,0.2);
-		background-color:var(--colorFalse);
-		box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);
-		cursor:pointer;
-		vertical-align:middle;
-		border-radius:4px;
-	}
-	[type="boolean"][select="1"], [type="boolean"][select="2"] {
-		display:block;
-	}
-	[type="boolean"][select="1"][v="false"]:before {content:"\\029be" " ";display:inline; !important}
-	[type="boolean"][select="1"][v="true"]:before {content:"\\029bf" " ";display:inline; !important}
-	[type="boolean"][select="2"][v="false"]:before {content:"\\2610" " ";display:inline; !important}
-	[type="boolean"][select="2"][v="true"]:before {content:"\\2611" " ";display:inline; !important}
-	[type="boolean"][eB="0"] {pointer-events:none; opacity:.5; contenteditable:false}
+[type="boolean"]{text-align:left;cursor:pointer;user-select: none;}
+[type="boolean"]:active, [type="boolean"][v="true"] {background-color:var(--colorTrue) !important;}
+[type="boolean"][select="-1"], [type="boolean"][select="0"] {min-width:100px;text-align:center;display:inline-block;padding:.4em;color:var(--color1);border:1px solid rgba(0,0,0,0.2);background-color:var(--colorFalse);box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);cursor:pointer;vertical-align:middle;border-radius:4px;}
+[type="boolean"][select="1"], [type="boolean"][select="2"] {display:block;}
+[type="boolean"][select="1"][v="false"]:before {content:"\\029be" " ";display:inline;}
+[type="boolean"][select="1"][v="true"]:before {content:"\\029bf" " ";display:inline;}
+[type="boolean"][select="2"][v="false"]:before {content:"\\2610" " ";display:inline;}
+[type="boolean"][select="2"][v="true"]:before {content:"\\2611" " ";display:inline;}
+[type="boolean"][eB="0"] {pointer-events:none; opacity:.5; contenteditable:false}
 `);
 gui.Boolean=class extends gui.Item{
 	_initContent(){
@@ -660,8 +616,8 @@ gui.Boolean.prototype.select=function(v){
 //////////////////////////////////////////////////////////////////////////////
 // containers
 addCSS(`
-	[type='container'] > .title:empty {display:none}
-	[type='container'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+[type='container'] > .title:empty {display:none}
+[type='container'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
 `);
 gui.Container=class extends gui.Item{
 	_initContent(){
@@ -694,8 +650,7 @@ gui.Container=class extends gui.Item{
 	}
 	_processChild(child,prop){
 		if(prop.v===null){										//if value is null, remove child
-			if(child._prop.id)delete this._childmap[child._prop.id];
-			this._content.removeChild(child._outterElement);
+			this._removeChild(child,prop);
 		}else{
 			var propType=gui.getType(prop);
 			if(child._typeCheck(propType)){
@@ -707,6 +662,19 @@ gui.Container=class extends gui.Item{
 				if(child._prop.id)this._childmap[prop.id]=newchild;
 			}
 		}
+	}
+	_removeChild(child){
+		if(child._prop.id)delete this._childmap[child._prop.id];
+		this._content.removeChild(child._outterElement);
+	}
+	_removeChildren(fromId,untilId){
+		if(fromId.constructor!==Number)
+			fromId=this._getChild(fromId)._getIndex();
+		if(untilId.constructor!==Number)
+			untilId=this._getChild(untilId)._getIndex();
+		for(var i=untilId-1;i>=fromId;--i)
+			this._removeChild(this._getChild(i));
+		return fromId;
 	}
 	_search(prop){
 		var recur=1;
@@ -736,6 +704,7 @@ gui.Container=class extends gui.Item{
 			setTimeout(function(){e._processProp(prop);},delay);
 			return;
 		}
+		if(prop.R&1)gui.sendAction(('Q' in prop)?prop.Q:(this._prop.id||this._getIndex()),[1]);
 		if('$' in prop){
 			this._search(prop);
 		}else{
@@ -757,6 +726,8 @@ gui.Container=class extends gui.Item{
 				this._processChild(child,prop);
 			}else if(prop.v!==null){						//new child
 				this._newChild(prop);
+			}else if(prop.P && prop.P.constructor===Array){
+				this._removeChildren(prop.P[0],prop.P[1]);
 			}
 		}
 	}
@@ -777,19 +748,30 @@ gui.Container.prototype.type='container';
 
 //////////////////////////////////////////////////////////////////////////////
 // onload: initiate rootContainer and connect to task software
+
 (function(){
 	//////////////////////////////////////////////////////////////////////////////
 	// init window and connect to task
 	function init(){
 		//create foundational element
-		document.body._level=-1;
+		document.body._level=-2;
 		document.body._content=document.body;
 		document.body._placeChildElement=function(child){
 			this._content.appendChild(child._element);
 			child._outterElement=child._element;
 		}
-		gui.rootContainer=new gui.Container({select:-1},document.body);
-		gui.rootContainer._parent=undefined;
+		gui.rootOrigin=new gui.Container({},document.body);
+		// gui.rootOrigin.v=item=>{
+			// item=gui.prop(item);
+			// item.id=0;
+			// this._processProp(item);
+		// };
+		gui.rootOrigin._removeChild=function(child){
+			gui.rootContainer._content.innerHTML='';
+			gui.rootContainer._childmap={};
+		}
+		gui.rootContainer=new gui.Container({select:-1},gui.rootOrigin);
+		gui.rootContainer._parent=null;
 		gui.rootContainer.error=gui.error;
 		gui.rootContainer.require=gui.require;
 		gui.rootContainer.agent=gui.agent;
@@ -834,13 +816,12 @@ gui.Container.prototype.type='container';
 	function connectToTaskHTTP(){
 		function onReady(){
 			if(this.readyState==4 && this.status==200){
-				var parrot,append;
+				gui.httpParrotHeader=null;
+				gui.httpAppendToURL=null;
 				this.getAllResponseHeaders().split('\n').forEach(line=>{
-					if(line.substr(0,9).toLowerCase()==('x-parrot:'))parrot=line.substr(10);
-					if(line.substr(0,16).toLowerCase()==('x-append-to-url:'))append=line.substr(17);
+					if(line.substr(0,9).toLowerCase()==('x-parrot:'))gui.httpParrotHeader=line.substr(10);
+					if(line.substr(0,16).toLowerCase()==('x-append-to-url:'))gui.httpAppendToURL=line.substr(17);
 				});
-				gui.httpParrotHeader=parrot;
-				gui.httpAppendToURL=append;
 				try{gui(JSON.parse(this.responseText));}
 				catch(e){console.error('Could not parse response.\n',this.responseText);}
 			}
@@ -855,7 +836,7 @@ gui.Container.prototype.type='container';
 		}
 		gui.action=function(time,id,val){
 			post(task.location,JSON.stringify([time,id,val]));
-		}
+		};
 		onTaskConnect();
 	}
 	function connectToTaskWS(){
@@ -906,13 +887,7 @@ gui.Container.prototype.type='container';
 
 gui.Item.prototype.P=function(v){
 	if(v.constructor===Array){
-		var child;
-		for(var i=v[1]-1;i>=v[0];--i){
-			child=this._parent._getChild(i);
-			if(child._prop.id)delete this._parent._childmap[child._prop.id];
-			this._parent._content.removeChild(child._outterElement);
-		}
-		v=v[0];
+		v=this._parent._removeChildren(v[0],v[1]);
 	}
 	var insertBefore=this._parent._getChild(v);
 	if(insertBefore)this._parent._content.insertBefore(this._outterElement,insertBefore._outterElement);
@@ -934,7 +909,39 @@ gui.Item.prototype.O=function(){
 	}
 }
 
-//gui.Item.prototype.e=function(v){}
+gui._sendEventKey=function(c,v){return (e)=>c._sendAction([v,e.keyCode]);}
+gui._sendEventXY=function(c,v){
+	return (e)=>{
+		var rect=c._element.getBoundingClientRect();
+		c._sendAction([v,e.clientX-rect.left,e.clientY-rect.top]);
+	}
+}
+gui.EVENTS={
+	30:['keypress',gui._sendEventKey],
+	31:['keydown',gui._sendEventKey,{once:true}],
+	32:['keyup',gui._sendEventKey],
+	40:['click',gui._sendEventXY],
+	41:['dblclick',gui._sendEventXY],
+	42:['mousedown',gui._sendEventXY],
+	43:['mouseup',gui._sendEventXY],
+	44:['mousemove',gui._sendEventXY],
+	45:['mouseenter',gui._sendEventXY],
+	46:['mouseleave',gui._sendEventXY],
+	47:['mouseover',gui._sendEventXY],
+	48:['mouseout',gui._sendEventXY]
+};
+gui.Item.prototype.e=function(v){
+	//TODO: add root-intended events to window
+	var e,f;
+	for(e in this._eventListeners)
+		this._element.removeEventListener(e,this._eventListeners[e]);
+	this._eventListeners={};
+	for(e of v){
+		f=gui.EVENTS[e][1](this,e);
+		this._element.addEventListener(gui.EVENTS[e][0],f,gui.EVENTS[e][2]);
+		this._eventListeners[gui.EVENTS[e][0]]=f;
+	}
+}
 
 gui.Text.prototype.onedit=function(v){this._onedit=v;};
 gui.Number.prototype.onedit=gui.Text.prototype.onedit;
@@ -947,16 +954,16 @@ gui.Number.prototype.patronym=gui.Text.prototype.patronym;
 gui.Boolean.prototype.patronym=gui.Text.prototype.patronym;
 
 addCSS(`
-	[emp="1"] {font-weight:bold}
-	[emp="2"] {font-weight:bold;font-style:italic}
-	[emp="3"] {font-weight:bold;font-style:italic;text-decoration:underline}
-	[emp="4"] {font-weight:bold;font-style:italic;text-decoration:underline;font-size:110%}
-	[emp="5"] {font-weight:bold;font-style:italic;text-decoration:underline;font-size:120%}
-	[emp2="1"] {background-color:rgba(255,255,0,.2);box-shadow: 0 0 0px 4px rgba(255,255,0,0.2);}
-	[emp2="2"] {background-color:rgba(255,255,0,.4);box-shadow: 0 0 0px 4px rgba(255,255,0,0.3);}
-	[emp2="3"] {background-color:rgba(255,255,0,.6);box-shadow: 0 0 0px 4px rgba(255,255,0,0.4);}
-	[emp2="4"] {background-color:rgba(255,255,0,.8);box-shadow: 0 0 0px 4px rgba(255,255,0,0.5);}
-	[emp2="5"] {background-color:rgba(255,255,0,1);box-shadow: 0 0 5px -1px rgba(255,255,0,0.6);}
+[emp="1"] {font-weight:bold}
+[emp="2"] {font-weight:bold;font-style:italic}
+[emp="3"] {font-weight:bold;font-style:italic;text-decoration:underline}
+[emp="4"] {font-weight:bold;font-style:italic;text-decoration:underline;font-size:110%}
+[emp="5"] {font-weight:bold;font-style:italic;text-decoration:underline;font-size:120%}
+[emp2="1"] {background-color:rgba(255,255,0,.2);box-shadow: 0 0 0px 4px rgba(255,255,0,0.2);}
+[emp2="2"] {background-color:rgba(255,255,0,.4);box-shadow: 0 0 0px 4px rgba(255,255,0,0.3);}
+[emp2="3"] {background-color:rgba(255,255,0,.6);box-shadow: 0 0 0px 4px rgba(255,255,0,0.4);}
+[emp2="4"] {background-color:rgba(255,255,0,.8);box-shadow: 0 0 0px 4px rgba(255,255,0,0.5);}
+[emp2="5"] {background-color:rgba(255,255,0,1);box-shadow: 0 0 5px -1px rgba(255,255,0,0.6);}
 `);
 gui.Item.prototype.emp=function(v){this._setAttr('emp',v)};
 gui.Item.prototype.emp2=function(v){this._setAttr('emp2',v)};
@@ -988,8 +995,8 @@ gui.Item.prototype.z=function(v){this._element.style.zIndex=10+v;};
 gui.Item.prototype.rot=function(v){this._element.style.setProperty('transform','rotate('+v+'deg)');};
 
 addCSS(`
-	[x],[y] {position:absolute;margin:0px}
-	[childPos] > [v] {margin:0px;position:absolute;top:0px;left:0px;width:100%;height:100%;overflow:visible}
+[x],[y] {position:absolute;margin:0px}
+[childPos] > [v] {margin:0px;position:absolute;top:0px;left:0px;width:100%;height:100%;overflow:visible}
 `);
 gui.Container.prototype._hasPositionedElements=function(){	//enables Item.x and Item.y behavior
 	for(var i of this)
@@ -1008,30 +1015,13 @@ gui.Item.prototype.y=function(v){
 	this._parent._setAttr('childPos',this._parent._hasPositionedElements());
 };
 
-/*
-	e:function(c,v){
-		if(v.constructor!==Array)v=[v];
-		if(c._clearEvents)c._clearEvents();
-		var functions=[];
-		for(var i=0;i<v.length;++i){
-			functions[i]=EVENTS[v[i]][1](c,v[i]);
-			c._content.addEventListener(EVENTS[v[i]][0],functions[i]);
-		}
-		c._clearEvents=function(){
-			for(var i=0;i<v.length;++i){
-				c._content.removeEventListener(EVENTS[v[i]][0],functions[i]);
-			}
-		}
-	},
-	scroll:function(c,v){c._content.style.overflowY=v&1?'auto':null;},
-*/
 //////////////////////////////////////////////////////////////////////////////
 
 
 //////////////////////////////////////////////////////////////////////////////
 // additional text options
 addCSS(`
-	[contenteditable=true] {background-color:white;min-width:100px;padding-left:5px;padding-right:5px;border:solid 1px lightgray;font-family:monospace}
+[contenteditable=true] {background-color:white;min-width:100px;padding-left:5px;padding-right:5px;border:solid 1px lightgray;font-family:monospace}
 `);
 gui.Text.prototype.eT=function(v){
 	var c=this._content;
@@ -1070,7 +1060,7 @@ gui.Text.prototype.eT=function(v){
 //////////////////////////////////////////////////////////////////////////////
 // additional number options
 addCSS(`
-	[type='number'] > [unit]:after {content: attr(unit);}
+[type='number'] > [unit]:after {content: attr(unit);}
 `);
 gui.Number.prototype.eN=function(v){
 	var c=this._content;
@@ -1121,8 +1111,8 @@ gui.Number.prototype.v=function(v){
 //////////////////////////////////////////////////////////////////////////////
 // html
 addCSS(`
-	[type='html'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
-	[type='html'] > [v] {white-space:normal;}
+[type='html'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+[type='html'] > [v] {white-space:normal;}
 `);
 gui.Html=class extends gui.Text{
 	v(v){this._content.innerHTML=v;}
@@ -1169,18 +1159,11 @@ gui.Html.prototype.eT=function(v){
 //////////////////////////////////////////////////////////////////////////////
 // table
 addCSS(`
-	[type="table"] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
-	[type="table"] {display:flex;flex-direction:column}
-	[type="table"] > div {overflow:auto;flex:1 1 auto}
-	table { 
-		border-spacing: 0;
-		border-collapse: collapse;
-	}
-	table[head="1"] > tr:first-child > * {
-		font-weight:bold;
-		background:var(--colorHead);
-		z-index:1;
-	}
+[type="table"] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+[type="table"] {display:flex;flex-direction:column}
+[type="table"] > div {overflow:auto;flex:1 1 auto}
+table {border-spacing:0;border-collapse:collapse;}
+table[head="1"] > tr:first-child > * {font-weight:bold;background:var(--colorHead);z-index:1;}
 `);
 gui.Table=class extends gui.Container{
 	_initContent(){
@@ -1241,37 +1224,31 @@ gui.Table.prototype.head=function(v){
 //////////////////////////////////////////////////////////////////////////////
 // path
 addCSS(`
-	.path.content {height:100px;}
-	svg {position:absolute;left:0px;top:0px;width:100%;height:100%;}
-	[type="path"] {width:100px;height:100px;}
+.path.content {height:100px;}
+[type="path"] {width:100px;height:100px;}
+[type="path"] [v] {position:absolute;left:0px;top:0px;width:100%;height:100%;margin-left:0px;margin-top:0px}
 `);
 var SVGNS="http://www.w3.org/2000/svg";
 gui.Path=class extends gui.Item{
 	_initContent(){
 		this._element=document.createElement('div');
 		this._title=this._element.appendChild(document.createElement('span'));
-		this._svg=this._element.appendChild(document.createElementNS(SVGNS,'svg'));
-		this._svg.setAttribute('viewBox','0 0 100 100');
-		this._svg.setAttribute('preserveAspectRatio','none');
-		this._content=this._svg.appendChild(document.createElementNS(SVGNS,'path'));
-		this._content.setAttribute('stroke-width',1);
-		this._content.setAttribute('stroke','black');
-		this._content.setAttribute('fill','none');
+		this._content=this._element.appendChild(document.createElementNS(SVGNS,'svg'));
+		this._content.setAttribute('viewBox','0 0 100 100');
+		this._content.setAttribute('preserveAspectRatio','none');
+		this._path=this._content.appendChild(document.createElementNS(SVGNS,'path'));
+		this._path.setAttribute('stroke-width',1);
+		this._path.setAttribute('stroke','black');
+		this._path.setAttribute('fill','none');
 		this._parent._placeChildElement(this);
 	}
 	_typeCheck(type){return (!type)||(type===this.constructor)||(type===gui.Container)||(type===gui.Text);}
 	v(v){
-		if(v.constructor==Array){
-			var d=this._attrC('d');
-			if(d)this._setAttrC('d',d+" "+v.join(' '));
-			else if(v[0].constructor===Number)this._setAttrC('d',"M"+v.join(' '));
-			else this._setAttrC('d',v.join(' '));
-		}else if(v.constructor==String)
-			this._setAttrC('d',v);
+		var d=this._path.getAttribute('d');
+		this._path.setAttribute('d',(d?(d+' '):'M')+v.join(' '));
 	}
 }
 gui.Path.prototype.type='path';
-gui.Path.prototype.c=function(v){this._setAttrC('stroke',gui.color(v));};
+gui.Path.prototype.c=function(v){this._path.setAttribute('stroke',gui.color(v));};
 //////////////////////////////////////////////////////////////////////////////
-
 
