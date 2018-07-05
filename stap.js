@@ -78,7 +78,7 @@ function load(urls, callback, onerror, type){
 		document.head.appendChild(fileref);
 	}
 }
-Math.round2=function(n,r){return Math.round(n/r)*r};
+Math.round2=(n,r)=>Math.round(n/r)*r;
 Date.prototype.format=function(format){
 	function twodigit(x){return x<10?'0'+x:x;}
 	function threedigit(x){return x<10?'00'+x:(x<100?'0'+x:x);}
@@ -170,6 +170,7 @@ gui.REQUIRED={
 		"TweenLite.defaultEase = Linear.easeNone;"
 	],
 	ease:"https://cdnjs.cloudflare.com/ajax/libs/gsap/2.0.1/easing/EasePack.min.js",
+	Mkdn:["https://cdn.jsdelivr.net/npm/marked/marked.min.js","gui.markdown=marked;"]
 };
 gui.OPTIONS=new Set(['$','O','P','Q','R','S','T','U','ease','easeout']);
 gui.OPTION_VALUES_IMPLEMENTED={
@@ -203,6 +204,7 @@ gui.prop=x=>(x===null||x.constructor!==Object)?{v:x}:x;
 gui.getColor=v=>getComputedStyle(document.body).getPropertyValue('--color'+v);
 gui.color=v=>gui.getColor(v)?`var(--color${v})`:v;
 gui.queue={};
+gui.animations={};
 
 //////////////////////////////////////////////////////////////////////////////
 // task (root-level container)
@@ -211,11 +213,24 @@ gui.require=function(require){
 	var errors,errorScreen=[];
 	var TYPES=new Set([gui.Item,gui.Text,gui.Number,gui.Boolean,gui.Container]);
 	if(require.type){
+		if(require.type.constructor!==Array)require.type=[require.type];
 		errors=[];
-		for(var type of require.type){
-			type=type[0].toUpperCase()+type.substr(1);
-			if(gui[type])TYPES.add(gui[type]);
-			else errors.push(type);
+		for(var i=0;i<require.type.length;++i){
+			if(require.type[i]){
+				type=require.type[i][0].toUpperCase()+require.type[i].substr(1);
+				if(type in gui.REQUIRED){
+					delete require.type[i];
+					load(gui.REQUIRED[type],
+							function(){
+								TYPES.add(gui[type]);
+								gui.require(require);
+							});
+					return;
+				}else if(gui[type]){
+					TYPES.add(gui[type]);
+				}else
+					errors.push(type);
+			}
 		}
 		if(errors.length){
 			gui.sendAction(0,{error:'Sorry, I cannot handle the required value type(s): '+errors});
@@ -283,15 +298,16 @@ gui.require=function(require){
 			if(propName in gui.OPTION_VALUES_IMPLEMENTED){
 				if(require[propName].constructor!==Array)require[propName]=[require[propName]];
 				for(var v of require[propName]){
-					if(gui.OPTION_VALUES_IMPLEMENTED[propName](v)){
-						if(propName in gui.REQUIRED){
-							load(gui.REQUIRED[propName]);
-						}
-					}else{
+					if(!gui.OPTION_VALUES_IMPLEMENTED[propName](v)){
 						gui.sendAction(0,{error:'Sorry, I cannot handle required option-value: {'+propName+':'+v+'}'});
 						errorScreen.push({id:'Cannot handle required property option(s)',v:['{'+propName+':'+v+'}']});
 					}
 				}
+			}
+		}
+		if(!errorScreen.length){
+			if(propName in gui.REQUIRED){
+				load(gui.REQUIRED[propName]);
 			}
 		}
 	}
@@ -339,9 +355,9 @@ addCSS(`
 --color6: red;
 --color7: green;
 }
-* {font-size:14pt;position:relative;box-sizing:border-box;font-size:98%;flex:0 0 auto;}
 body {background-color:var(--color0);color:var(--color1);font-size:16pt;}
-div {margin:2px;margin-top:7px;}
+[level="-1"],[level="0"],[level="-1"]>*,[level="0"]>* {margin:0px;padding:0px}
+div {font-size:14pt;position:relative;box-sizing:border-box;font-size:98%;flex:0 0 auto;margin-top:7px;}
 .title:not(empty) {white-space:nowrap;display:inline-block;}
 [v] {margin-left:5px;overflow:auto}
 `);
@@ -359,7 +375,7 @@ gui.Item=class{
 			this._setAttr('id',prop.id);													//set id
 			this.title(prop.id);
 		}
-		this._prop={};
+		this._prop={id:prop.id};
 		this._update(prop);																	//refresh attributes based on self and parent property values
 		prop=this._getParentProps();
 		for(var propName in prop)
@@ -367,7 +383,7 @@ gui.Item=class{
 	}
 	_initContent(){
 		this._element=document.createElement('div');										//make element
-		this._title=this._element.appendChild(document.createElement('div'));
+		this._title=this._element.appendChild(document.createElement('span'));
 		this._content=this._element.appendChild(document.createElement('div'));				//e.v is a sub-element where content is displayed
 		this._parent._placeChildElement(this);
 	}
@@ -428,13 +444,32 @@ gui.Item=class{
 			aniopt.onUpdateParams=[curopt];
 			//optional receipt once animation ends
 			if(prop.R&2){
-				aniopt.onComplete=function(){gui.sendAction(('Q' in prop)?prop.Q:(e._prop.id||e._getIndex()),[2]);};
+				aniopt.onComplete=function(){
+					if('Q' in prop){
+						//send receipt with Qid
+						gui.sendAction(prop.Q,[2]);
+						//remove animation from gui.animations
+						delete gui.animations[prop.Q];
+					}else{
+						//send receipt with item id
+						gui.sendAction(e._prop.id||e._getIndex(),[2]);
+					}
+				};
+			}else if('Q' in prop){
+				//remove animation from gui.animations
+				aniopt.onComplete=function(){
+					delete gui.animations[prop.Q];
+				}
 			}
 			//start animation
 			ani.ani=TweenLite.to(curopt,animate,aniopt);
+			//add animation to gui.animations
+			if('Q' in prop)
+				gui.animations[prop.Q]=ani.ani;
 		}
 	}
 	_update(prop){
+		delete prop.id;
 		if(prop.S)this._animate(prop);
 		Object.assign(this._prop,prop);
 		for(var propName in prop){
@@ -625,8 +660,11 @@ gui.Container=class extends gui.Item{
 		this._childmap={};
 	}
 	*[Symbol.iterator](){
-		for(var i=this._content.children.length;i--;)
-			yield this._content.children[i]._item;
+		var i,child;
+		for(i=this._content.children.length;i--;){
+			child=this._content.children[i]._item;
+			if(child)yield child;
+		}
 	}
 	_getChild(id){
 		if(typeof(id)==='number'){								//find child by order
@@ -646,7 +684,7 @@ gui.Container=class extends gui.Item{
 			prop.v=[];
 		}
 		var child=new type(prop,this);
-		if(typeof(prop.id)!=='number')this._childmap[prop.id]=child;
+		if(child._prop.id!==undefined)this._childmap[child._prop.id]=child;
 	}
 	_processChild(child,prop){
 		if(prop.v===null){										//if value is null, remove child
@@ -683,25 +721,43 @@ gui.Container=class extends gui.Item{
 			delete prop.$.recur;
 		}
 		for(var child of this){
-			if(child){
-				if(child._match(prop.$))
-					this._processChild(child,Object.assign({},prop));
-				if(recur && (child instanceof gui.Container))
-					child._search(prop);
-			}
+			if(child._match(prop.$))
+				this._processChild(child,Object.assign({},prop));
+			if(recur && (child instanceof gui.Container))
+				child._search(prop);
 		}
 	}
+	_delayedProcessing(prop,delay){
+		var e=this,
+			timeoutId=setTimeout(function(){
+				if('Q' in prop)
+					delete gui.queue[prop.Q];
+				e._processProp(prop);
+			},delay);
+		if('Q' in prop)
+			gui.queue[prop.Q]=timeoutId;
+	}
 	_processProp(prop){
+		if('Q' in prop){
+			if(gui.queue[prop.Q]){
+				clearTimeout(gui.queue[prop.Q]);
+				delete gui.queue[prop.Q];
+			}
+			if(gui.animations[prop.Q]){
+				gui.animations[prop.Q].kill();
+				delete gui.animations[prop.Q];
+			}
+		}
 		if(prop.U){		//optional delay
-			let delay=prop.U-gui.ums(),e=this;
+			let delay=prop.U-gui.ums();
 			delete prop.U;
-			setTimeout(function(){e._processProp(prop);},delay);
+			this._delayedProcessing(prop,delay);
 			return;
 		}
 		if(prop.T){		//optional delay
-			let delay=prop.T*1000,e=this;
+			let delay=prop.T*1000;
 			delete prop.T;
-			setTimeout(function(){e._processProp(prop);},delay);
+			this._delayedProcessing(prop,delay);
 			return;
 		}
 		if(prop.R&1)gui.sendAction(('Q' in prop)?prop.Q:(this._prop.id||this._getIndex()),[1]);
@@ -710,7 +766,7 @@ gui.Container=class extends gui.Item{
 		}else{
 			var child;
 			if('id' in prop){
-				if(prop.id.constructor===Array&&prop.id.length){
+				if(prop.id.constructor===Array && prop.id.length){
 					if(prop.id.length===1){
 						prop.id=prop.id[0];
 					}else{
@@ -733,9 +789,8 @@ gui.Container=class extends gui.Item{
 	}
 	_default(propValue,propName){
 		for(var child of this){
-			if(child){
-				if(propName in child && !(propName in child._prop))child[propName](propValue);
-				else child._default(propValue,propName);
+			if(propName in child._prop){
+				child._refreshProp(propName,propValue);
 			}
 		}
 	}
@@ -761,11 +816,6 @@ gui.Container.prototype.type='container';
 			child._outterElement=child._element;
 		}
 		gui.rootOrigin=new gui.Container({},document.body);
-		// gui.rootOrigin.v=item=>{
-			// item=gui.prop(item);
-			// item.id=0;
-			// this._processProp(item);
-		// };
 		gui.rootOrigin._removeChild=function(child){
 			gui.rootContainer._content.innerHTML='';
 			gui.rootContainer._childmap={};
@@ -1035,7 +1085,7 @@ gui.Text.prototype.eT=function(v){
 		});
 		function send(){
 			if(c.innerText!=c._item._prop.v){
-				c._item._value(c.innerText);
+				c._item._prop.v=c.innerText;
 				c._item._sendAction(c.innerText);
 			}
 		}
@@ -1103,6 +1153,7 @@ gui.Number.prototype.v=function(v){
 	if(this._max!==undefined)v=Math.min(v,this._max);
 	if(this._rnd!==undefined)v=Math.round2(v,this._rnd);
 	if(this._attr('time'))v=new Date(v*1000).format(this._attr('time'));
+	else if(this._rnd<1)v=v.toFixed(this._rnd.toString().split('.')[1].length);
 	this._content.innerText=v;
 }
 //////////////////////////////////////////////////////////////////////////////
@@ -1120,39 +1171,35 @@ gui.Html=class extends gui.Text{
 }
 gui.Html.prototype.type='html';
 gui.Html.prototype.eT=function(v){
-	var c=this._content;
-	c._removeListeners();
 	if(v>0){
-		c.setAttribute('contenteditable',true);
-		c.innerText=c._item._prop.v;
-		c._listen('paste',function(e){
-			e.preventDefault();
-			var txt=e.clipboardData.getData("text/plain");
-			document.execCommand("insertText",false,(v&1)?txt.replace(/\n|\r/g,' '):txt);
-		});
-		function send(){
-			if(c.innerText!=c._item._prop.v){
-				c._item._prop.v=c.innerText;
-				c._item._sendAction(c.innerText);
-			}
-		}
-		if(v==4){
-			c._listen('input',send);
-		}else if(v==3){
-			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault()}});
-			c._listen('input',send);
-		}else if(v==2){
-			c._listen('blur',send);
-		}else{
-			c._listen('blur',send);
-			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault();send();}});
-		}
-	}else if(c.getAttribute('contenteditable')){
-		c.removeAttribute('contenteditable');
-		c.innerHTML=c._item._prop.v;
+		this._content.innerText=this._prop.v;
+		gui.Text.prototype.eT.call(this,v);
+	}else if(this._attrC('contenteditable')){
+		this._content.removeAttribute('contenteditable');
+		this._content.innerHTML=this._prop.v;
 	}
 };
+//////////////////////////////////////////////////////////////////////////////
 
+
+//////////////////////////////////////////////////////////////////////////////
+// mkdn
+addCSS(`
+[type='mkdn'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+`); //TODO: many css styles dont work because of all the stap-specific css
+gui.Mkdn=class extends gui.Html{
+	v(v){this._content.innerHTML=gui.markdown(v);}
+}
+gui.Mkdn.prototype.type='mkdn';
+gui.Mkdn.prototype.eT=function(v){
+	if(v>0){
+		this._content.innerText=this._prop.v;
+		gui.Text.prototype.eT.call(this,v);
+	}else if(this._attrC('contenteditable')){
+		this._content.removeAttribute('contenteditable');
+		this._content.innerHTML=gui.markdown(this._prop.v);
+	}
+};
 //////////////////////////////////////////////////////////////////////////////
 
 
