@@ -1210,7 +1210,7 @@ addCSS(`
 [type="table"] {display:flex;flex-direction:column}
 [type="table"] > div {overflow:auto;flex:1 1 auto}
 table {border-spacing:0;border-collapse:collapse;}
-table[head="1"] > tr:first-child > * {font-weight:bold;background:var(--colorHead);z-index:1;}
+table[head="1"] > tr:first-child > * {font-weight:bold;background:var(--colorHead);z-index:1;position:relative}
 `);
 gui.Table=class extends gui.Container{
 	_initContent(){
@@ -1255,7 +1255,9 @@ gui.TableRow.prototype.type='tableRow';
 gui.Table.prototype._floatRow=function(e){
 	var translate=this.scrollTop?"translate(0,"+(this.scrollTop-3)+"px)":null;
 	var p=this.firstChild.firstChild.querySelectorAll('td');
-	for(var i in p)if(p[i] && p[i].style)p[i].style.transform = translate;
+	for(var i in p)if(p[i] && p[i].style){
+		p[i].style.transform = translate;
+	}
 }
 gui.Table.prototype.head=function(v){
 	this._setAttrC('head',v);
