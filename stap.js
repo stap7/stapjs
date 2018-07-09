@@ -357,9 +357,9 @@ addCSS(`
 }
 body {background-color:var(--color0);color:var(--color1);font-size:16pt;}
 [level="-1"],[level="0"],[level="-1"]>*,[level="0"]>* {margin:0px;padding:0px}
-div {font-size:14pt;position:relative;box-sizing:border-box;font-size:98%;flex:0 0 auto;margin-top:7px;}
+div {font-size:14pt;position:relative;box-sizing:border-box;font-size:98%;flex:0 0 auto;margin:3px;}
 .title:not(empty) {white-space:nowrap;display:inline-block;}
-[v] {margin-left:5px;overflow:auto}
+[v] {overflow:auto}
 `);
 gui.Item=class{
 	constructor(prop,parent){
