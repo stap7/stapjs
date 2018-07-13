@@ -50,7 +50,7 @@ var SAMPLE_CODE = new Map([
 ]`],
 
 	['bouncing ball', `[
- {"id":"ball","bg":3,"w":50,"h":50,"r":25,"x":0,"y":0},
+ {"id":"ball","bg":3,"w":50,"h":50,"r":25,"x":0,"y":30},
  {"id":"ball","x":200,"S":2},
  {"id":"ball","y":200,"S":2,"ease":"bounce"}
 ]`]
@@ -66,18 +66,14 @@ var task = {
 		task.updateUI({
 			require:{options:['S','ease']},
 			template:`
-				[level="0"]>[v] {height:100%;display:flex;flex-direction:column}
-				#Preview {background:linear-gradient(to right,white,lightgray);margin-top:1.5em}
-				#Preview>.title {top:-1.5em;position:absolute}
-				#STAP {flex:1 1 auto;display:flex;flex-direction:column}
-				#STAP>[v] {flex:1 1 auto}
 				#Warning {text-align:right}
 				#Warning * {display:inline}
 			`
 		});
 		task.updateUI([
-			{id:"STAP",v:"",eT:4},
-			{id:"Preview",h:251}
+			{id:"Preview",h:251},
+			{id:"Sample Code"},
+			{id:"STAP",v:"",eT:4}
 		]);
 		for(var i of SAMPLE_CODE.keys())
 			task.updateUI([{id:"Sample Code",v:[{id:i,v:false}]}]);
@@ -89,7 +85,7 @@ var task = {
 			try{
 				task.updateUI([{id:'Preview',v:""},{id:'Preview',v:JSON.parse(value)}]);
 			}catch(e){
-				task.updateUI([{id:'Warning',v:'Invalid JSON string',P:1}]);
+				task.updateUI([{id:'Warning',v:'Invalid JSON string',emp2:1}]);
 			}
 		}else{
 			if(SAMPLE_CODE.has(element)){

@@ -556,7 +556,9 @@ gui.Text.prototype.type='text';
 // number items
 addCSS(`
 [type='number'] > .title:empty {display:none}
-[type='number'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+[type='number'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);vertical-align:top;margin-top:inherit}
+[type='number'] > .title:not(empty):after {content:":"}
+[type='number'] > [v] {display:inline-block}
 `);
 gui.Number=class extends gui.Item{
 	_animatable(propName){return propName==='v' || gui.ANIMATABLE.has(propName)}
