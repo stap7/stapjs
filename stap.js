@@ -1,7 +1,7 @@
 /*base html5 template for STAP (v7.11) visualization
 
 	What is STAP? 
-		http://vdv7.github.io/stap/
+		http://stap7.github.io/
 
 
 	Are all optional UI component types and properties from the STAPv7.11 spec implemented in stapjs?
@@ -841,10 +841,7 @@ gui.Container.prototype.type='container';
 			else
 				connectToTaskHTTP();
 		}else{
-			gui(['Hey there...',{id:'Intersted in the STAP?',v:[
-				'https://github.com/vdv7/stap',
-				'https://github.com/vdv7/stapjs',
-				'https://github.com/vdv7/actr-stap']}]);
+			gui(['Hey there...',{id:'Intersted in the STAP?',v:"http://stap7.github.io/"}]);
 		}
 	}
 	function onTaskConnect(){
