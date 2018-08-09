@@ -74,7 +74,14 @@ function load(urls, callback, onerror, type){
 	if(fileref){
 		fileref.onreadystatechange=onload;
 		fileref.onload=onload;
-		fileref.onerror=onerror||function(e){console.error(e);onload();};
+		try{
+			var urlo=new URL(url);
+			fileref.onerror=function(){
+				load(urlo.pathname.split('/').pop(),onload,onerror,type);
+			}
+		}catch(e){
+			fileref.onerror=onerror||function(e){console.error(e);onload();};
+		}
 		document.head.appendChild(fileref);
 	}
 }
@@ -333,7 +340,9 @@ gui.agent=function(v){
 		}else if(i==='userAgent'){
 			gui.sendAction(0,{'userAgent':navigator.userAgent});
 		}else if(i==='ip'){
-			load('https://api.ipify.org/?format=jsonp&callback=gui.rootContainer._sendAction',null,null,'js');
+			fetch('https://api.ipify.org/').then(r=>r.text()).then(ip=>{
+				gui.sendAction(0,{'ip':ip});
+			});
 		}
 	}
 }
@@ -864,15 +873,30 @@ gui.Container.prototype.type='container';
 	}
 	function connectToTaskHTTP(){
 		function onReady(){
-			if(this.readyState==4 && this.status==200){
-				gui.httpParrotHeader=null;
-				gui.httpAppendToURL=null;
-				this.getAllResponseHeaders().split('\n').forEach(line=>{
-					if(line.substr(0,9).toLowerCase()==('x-parrot:'))gui.httpParrotHeader=line.substr(10);
-					if(line.substr(0,16).toLowerCase()==('x-append-to-url:'))gui.httpAppendToURL=line.substr(17);
-				});
-				try{gui(JSON.parse(this.responseText));}
-				catch(e){console.error('Could not parse response.\n',this.responseText);}
+			if(this.readyState==4){
+				if(this.status==200){
+					gui.httpParrotHeader=null;
+					gui.httpAppendToURL=null;
+					this.getAllResponseHeaders().split('\n').forEach(line=>{
+						if(line.substr(0,9).toLowerCase()==('x-parrot:'))gui.httpParrotHeader=line.substr(10);
+						if(line.substr(0,16).toLowerCase()==('x-append-to-url:'))gui.httpAppendToURL=line.substr(17);
+					});
+					try{
+						//gui(JSON.parse(this.responseText));
+						var arrayOfLines=this.responseText.match(/[^\r\n]+/g);
+						if(arrayOfLines){
+							for(var i=0;i<arrayOfLines.length;i++){
+								gui(JSON.parse(arrayOfLines[i]));
+							}
+						}
+					}
+					catch(e){console.error('Could not parse response.\n',this.responseText);}
+				}else if(this.status>200 && this.status<400){
+					var url=new URL(this.responseText);
+					console.log(this.statusText+'\n  '+url.href);
+					task.location=url.href;
+					gui.sendAction(0,[0]);
+				}
 			}
 		}
 		function post(url,body=''){
