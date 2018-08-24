@@ -365,7 +365,7 @@ addCSS(`
 --color7: green;
 }
 body {background-color:var(--color0);color:var(--color1);font-size:16pt;}
-[level="-1"],[level="0"],[level="-1"]>*,[level="0"]>* {margin:0px;padding:0px}
+[level="-1"],[level="0"],[level="-1"]>*,[level="0"]>* {margin:0px;padding:0px;width:100%;height:100%;}
 div {font-size:14pt;position:relative;box-sizing:border-box;font-size:98%;flex:0 0 auto;margin:3px;}
 .title:not(empty) {white-space:nowrap;display:inline-block;}
 [v] {overflow:auto}
@@ -401,7 +401,7 @@ gui.Item=class{
 		var props={};
 		for(var parent=this._parent;parent;parent=parent._parent){
 			for(var propName in parent._prop)
-				if(!(propName in parent || propName in this._prop || propName in props))
+				if(!((propName in parent && propName!='patronym') || propName in this._prop || propName in props))
 					props[propName]=parent._prop[propName];
 		}
 		return props;
@@ -503,7 +503,7 @@ gui.Item=class{
 	_match(query){
 		if(query.constructor===String){
 			if((this._prop.id||'')===query)return true;
-			if(this._prop['#']&&this._prop['#'].indexOf(query)>-1)return true;
+			if(this._prop['cls']&&this._prop['cls'].indexOf(query)>-1)return true;
 		}else if(query.constructor===Object){
 			for(var q in query){
 				if(q==='id'){
@@ -513,8 +513,8 @@ gui.Item=class{
 						if(this._prop.id)return false;
 					}else if(query.id!==this._prop.id)
 						return false;
-				}else if(q==='#'&&query.q){
-					if(this._prop['#']&&this._prop['#'].indexOf(query)>-1)return true;
+				}else if(q==='cls'&&query.q){
+					if(this._prop['cls']&&this._prop['cls'].indexOf(query)>-1)return true;
 					return false;
 				}else if(q==='type'){
 					if(this.type==='text'){
@@ -551,6 +551,16 @@ gui.Item=class{
 	v(v){this._content.innerText=v;}
 	id(){}
 	title(v){this._title.innerText=(v===null||v===undefined)?this._prop.id:v;}
+	tags(v){
+		if(v){
+			if(v.constructor!==Array){
+				v=[v];
+				this._prop.tags=v;
+			}
+			for(var i=0;i<v.length;i++)
+				this._element.classList.add(v[i]);
+		}
+	}
 }
 //////////////////////////////////////////////////////////////////////////////
 // text items
@@ -1025,6 +1035,7 @@ gui.Container.prototype.onsubedit=function(){}
 gui.Text.prototype.patronym=function(v){this._patronym=v;}
 gui.Number.prototype.patronym=gui.Text.prototype.patronym;
 gui.Boolean.prototype.patronym=gui.Text.prototype.patronym;
+gui.Container.prototype.patronym=function(v){this._patronym=v;this._default(v,'patronym');}
 
 addCSS(`
 [emp="1"] {font-weight:bold}
@@ -1227,6 +1238,29 @@ gui.Mkdn.prototype.eT=function(v){
 
 
 //////////////////////////////////////////////////////////////////////////////
+// popup
+addCSS(`
+[type='popup'] {position:absolute;top:0px;left:0px;width:99%;height:99%;background-color:rgba(255,255,255,.5)}
+[type='popup'] > div {top:50%;left:50%;transform:translate(-50%,-50%);width:50%;border:solid 1px gray;border-radius:4px;background-color:var(--color0);padding:1em}
+[type='popup'] > * > .title:empty {display:none}
+[type='popup'] > * > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+`);
+gui.Popup=class extends gui.Container{
+	_initContent(){
+		this._element=document.createElement('div'); //screen
+		this._frame=this._element.appendChild(document.createElement('div')); //popup window
+		this._title=this._frame.appendChild(document.createElement('span'));
+		this._content=this._frame.appendChild(document.createElement('div'));
+		this._content.style.overflow='auto';
+		this._parent._placeChildElement(this);
+		this._childmap={};
+	}
+}
+gui.Popup.prototype.type='popup';
+//////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////////////
 // table
 addCSS(`
 [type="table"] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
@@ -1239,9 +1273,9 @@ gui.Table=class extends gui.Container{
 	_initContent(){
 		this._element=document.createElement('div');
 		this._title=this._element.appendChild(document.createElement('span'));
-		this._tableFrame=this._element.appendChild(document.createElement('div'));
-		this._tableFrame.style.overflow='auto';
-		this._content=this._tableFrame.appendChild(document.createElement('table'));
+		this._frame=this._element.appendChild(document.createElement('div'));
+		this._frame.style.overflow='auto';
+		this._content=this._frame.appendChild(document.createElement('table'));
 		this._parent._placeChildElement(this);
 		this._childmap={};
 	}
@@ -1284,10 +1318,10 @@ gui.Table.prototype._floatRow=function(e){
 }
 gui.Table.prototype.head=function(v){
 	this._setAttrC('head',v);
-	if(v)this._tableFrame.addEventListener('scroll',this._floatRow);
+	if(v)this._frame.addEventListener('scroll',this._floatRow);
 	else{
 		this._content.firstChild.style.transform=null;
-		this._tableFrame.removeEventListener('scroll',this._floatRow);
+		this._frame.removeEventListener('scroll',this._floatRow);
 	}
 }
 //////////////////////////////////////////////////////////////////////////////
