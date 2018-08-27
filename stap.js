@@ -1,4 +1,4 @@
-/*base html5 template for STAP (v7.11) visualization
+/*base html5 template for STAP (v7.14) visualization
 
 	What is STAP? 
 		http://stap7.github.io/
@@ -397,7 +397,6 @@ gui.Item=class{
 		this._parent._placeChildElement(this);
 	}
 	_getParentProps(){
-		//TODO: (optimization) store and return stored value based on whether this info is outdated (e.g. based on msg# or time)
 		var props={};
 		for(var parent=this._parent;parent;parent=parent._parent){
 			for(var propName in parent._prop)
@@ -687,6 +686,7 @@ gui.Container=class extends gui.Item{
 			if(child)yield child;
 		}
 	}
+	_last(){for(var i of this)return i;}
 	_getChild(id){
 		if(typeof(id)==='number'){								//find child by order
 			var childElement=this._content.children[id];
@@ -725,15 +725,6 @@ gui.Container=class extends gui.Item{
 	_removeChild(child){
 		if(child._prop.id)delete this._childmap[child._prop.id];
 		this._content.removeChild(child._outterElement);
-	}
-	_removeChildren(fromId,untilId){
-		if(fromId.constructor!==Number)
-			fromId=this._getChild(fromId)._getIndex();
-		if(untilId.constructor!==Number)
-			untilId=this._getChild(untilId)._getIndex();
-		for(var i=untilId-1;i>=fromId;--i)
-			this._removeChild(this._getChild(i));
-		return fromId;
 	}
 	_search(prop){
 		var recur=1;
@@ -803,8 +794,6 @@ gui.Container=class extends gui.Item{
 				this._processChild(child,prop);
 			}else if(prop.v!==null){						//new child
 				this._newChild(prop);
-			}else if(prop.P && prop.P.constructor===Array){
-				this._removeChildren(prop.P[0],prop.P[1]);
 			}
 		}
 	}
@@ -969,11 +958,34 @@ gui.Container.prototype.type='container';
 // additional common options
 
 gui.Item.prototype.P=function(v){
+	//TODO: add animated moves
+	var insertBefore,parent;
 	if(v.constructor===Array){
-		v=this._parent._removeChildren(v[0],v[1]);
+		console.log('trying to insert',v);
+		parent=gui.rootContainer;
+		for(var i=0;i<v.length-1;i++){
+			console.log(i,parent);
+			parent=parent._getChild(v[i]);
+			console.log(i,parent);
+		}
+		console.log(i,v[i]);
+		v=v[i];
+		if(this._prop.id!==undefined)this._parent._childmap[this._prop.id]=undefined;
+	}else{
+		parent=this._parent;
 	}
-	var insertBefore=this._parent._getChild(v);
-	if(insertBefore)this._parent._content.insertBefore(this._outterElement,insertBefore._outterElement);
+	if(parent){
+		insertBefore=parent._getChild(v);
+		if(insertBefore){
+			parent._content.insertBefore(this._outterElement,insertBefore._outterElement);
+		}else{
+			var thisItem=this;
+			setTimeout(function(){
+				parent._placeChildElement(thisItem)
+			},1);
+		}
+		if(this._prop.id!==undefined)parent._childmap[this._prop.id]=this;
+	}
 };
 
 gui.Item.prototype.O=function(){
@@ -1220,7 +1232,7 @@ gui.Html.prototype.eT=function(v){
 // mkdn
 addCSS(`
 [type='mkdn'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
-`); //TODO: many css styles dont work because of all the stap-specific css
+`);
 gui.Mkdn=class extends gui.Html{
 	v(v){this._content.innerHTML=gui.markdown(v);}
 }
