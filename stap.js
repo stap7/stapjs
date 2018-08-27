@@ -186,7 +186,7 @@ gui.OPTION_VALUES_IMPLEMENTED={
 	ease:v=>(v in gui.EASE)
 };
 gui.COLOROPTIONS=new Set(['bg','c','bdc','f']);
-gui.ANIMATABLE=new Set(['x','y','w','h','r','bg','bd','bdw','bdc','pad','c','rot']);
+gui.ANIMATABLE=new Set(['x','y','w','h','r','bg','bd','bdw','bdc','pad','c','rot','thk','f']);
 gui.EASE={0:'Power0',1:'Power1',2:'Power2',3:'Power3',4:'Power4',back:'Back',elastic:'Elastic',bounce:'Bounce'};
 gui.EVENTS={};
 gui.ums=function(){return (new Date()).getTime()-gui.startTime;};
@@ -428,7 +428,7 @@ gui.Item=class{
 					curopt[optKey]=this._prop[optKey]||this._getParentProps()[optKey]||'rgba(0,0,0,0)';
 					aniopt[optKey]=gui.getColor(prop[optKey])||prop[optKey];
 				}else{
-					curopt[optKey]=this._prop[optKey]||this._getParentProps()[optKey]||0;
+					curopt[optKey]=this._prop[optKey]||this._getParentProps()[optKey]||(optKey==='thk'?1:0);
 					aniopt[optKey]=prop[optKey];
 				}
 				delete prop[optKey];
@@ -1356,5 +1356,7 @@ gui.Path=class extends gui.Item{
 }
 gui.Path.prototype.type='path';
 gui.Path.prototype.c=function(v){this._path.setAttribute('stroke',gui.color(v));};
+gui.Path.prototype.f=function(v){this._path.setAttribute('fill',v===null?'None':gui.color(v));};
+gui.Path.prototype.thk=function(v){this._path.setAttribute('stroke-width',v===null?1:v);};
 //////////////////////////////////////////////////////////////////////////////
 
