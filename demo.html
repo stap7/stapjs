@@ -8,9 +8,9 @@
 
 var SAMPLE_CODE = new Map([
 
-	['some text', `[ "Hello World!" ]`],
+	['some text', `[ "Hello World!", "a STAP container is just a list of item updates" ]`],
 
-	['a button', `[ {"id":"Press Me","v":false} ]`],
+	['buttons', `[ {"id":"Press me","v":false}, {"id":"No, press me","v":false} ]`],
 
 	['container w/ radio buttons', `[
  {
@@ -21,7 +21,9 @@ var SAMPLE_CODE = new Map([
    {"id":"Ford","v":false},
    {"id":"Tesla","v":false}
   ]
- }
+ },
+ "the \\"select\\" property specifies how many items can be selected",
+ "select:1 means that only 1 item in the container can be selected at a time (i.e. radio buttons)"
 ]`],
 
 	['container w/ checkboxes', `[
@@ -33,10 +35,33 @@ var SAMPLE_CODE = new Map([
    {"id":"Ford","v":false},
    {"id":"Tesla","v":false}
   ]
- }
+ },
+ "the \\"select\\" property specifies how many items can be selected",
+ "select:2 means that many items in the container can be selected at a time (i.e. checkboxes)"
+]`],
+
+	['table', `[
+ {
+  "id":"Personnel",
+  "type":"table",
+  "head":1,
+  "select":2,
+  "rnd":0.01,
+  "unit":"$",
+  "v":[
+   ["Name","Gender","Salary","Working this week"],
+   {"id":"P801","v":["Max Brownwell","female",2.75,false]},
+   {"id":"P807","v":["Carrie Vanilla","male",2,false]},
+   {"id":"P807","v":["Jenny Jerrings","female",1,true]},
+   {"id":"P832","v":["Jerry Jennings","male",1,false]}
+  ]
+ },
+ "there are several element types in STAP, including table, popup, path, mkdn, and html"
 ]`],
 
 	['box', `[ {"bg":2,"w":50,"h":50} ]`],
+
+	['triangle', `[ {"type":"path","f":3,"w":50,"h":50,"v":[[0,100],[50,0],[100,100],[0,100]]} ]`],
 
 	['color change every 1.5s', `[
  {"id":"time","v":10.5,"rnd":0.001,"S":10.5},
@@ -67,7 +92,7 @@ var task = {
 		task.updateUI({
 			require:{options:['S','ease'],type:['mkdn']},
 			template:`
-				#Preview {background:linear-gradient(to bottom left,white 75%,#dee 85%,#9aa)}
+				#Preview {background:linear-gradient(to bottom left,white 75%,#dee 85%,#9aa);box-shadow:-1px -1px 1px lightgray;padding:5px}
 				#Warning {text-align:right}
 				#Warning * {display:inline}
 			`

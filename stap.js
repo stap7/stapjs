@@ -367,7 +367,7 @@ addCSS(`
 body {background-color:var(--color0);color:var(--color1);font-size:16pt;}
 [level="-1"],[level="0"],[level="-1"]>*,[level="0"]>* {margin:0px;padding:0px;width:100%;height:100%;}
 div {font-size:14pt;position:relative;box-sizing:border-box;font-size:98%;flex:0 0 auto;margin:3px;}
-.title:not(empty) {white-space:nowrap;display:inline-block;}
+.title:not(empty):not(td) {white-space:nowrap;display:inline-block;}
 [v] {overflow:auto}
 `);
 gui.Item=class{
@@ -592,13 +592,17 @@ addCSS(`
 [eB="1"] {cursor:pointer;user-select:none;}
 [eB="0"] {pointer-events:none;opacity:.5;contenteditable:false}
 [select]:active,[select][v="true"] {background-color:var(--colorTrue) !important;}
-[select="-1"],[select="0"] {min-width:100px;text-align:center;display:inline-block;padding:.4em;color:var(--color1);border:1px solid rgba(0,0,0,0.2);background-color:var(--colorFalse);box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);cursor:pointer;vertical-align:middle;border-radius:4px;}
+[select="-1"],[select="0"] {text-align:center;display:inline-block;padding:.4em;color:var(--color1);border:1px solid rgba(0,0,0,0.2);background-color:var(--colorFalse);box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);cursor:pointer;vertical-align:middle;}
+[select="-1"]:not(:empty),[select="0"]:not(:empty) {min-width:100px;border-radius:4px;}
+[eB][select="-1"]:empty,[eB][select="0"]:empty {width:2em;height:2em;border-radius:2em;}
 [type="boolean"][select="1"],[type="boolean"][select="2"] {display:block;text-align:left}
-[select="1"][v="false"]:before {content:"\\029be" " ";display:inline;}
-[select="1"][v="true"]:before {content:"\\029bf" " ";display:inline;}
-[select="2"][v="false"]:before {content:"\\2610" " ";display:inline;}
-[select="2"][v="true"]:before {content:"\\2611" " ";display:inline;}
-[type='container'][select="1"],[type='container'][select="2"] {box-shadow:2px 2px 2px -1px rgba(0,0,0,0.2)}
+[type="boolean"][select="1"]:empty,[type="boolean"][select="2"]:empty {text-align:center}
+[type="boolean"][select="1"][v="false"]:before {content:"\\029be" " ";display:inline;}
+[type="boolean"][select="1"][v="true"]:before {content:"\\029bf" " ";display:inline;}
+[type="boolean"][select="2"][v="false"]:before {content:"\\2610" " ";display:inline;}
+[type="boolean"][select="2"][v="true"]:before {content:"\\2611" " ";display:inline;}
+[select="-1"]:not([eB]),[select="0"]:not([eB]){display:none}
+[type="container"][select="1"],[type="container"][select="2"] {box-shadow:2px 2px 2px -1px rgba(0,0,0,0.2)}
 `);
 gui.Boolean=class extends gui.Item{
 	_initContent(){
@@ -627,6 +631,8 @@ gui.Boolean=class extends gui.Item{
 					if(selectParent._selected && selectParent._selected!==this){
 						selectParent._selected._prop.v=false;
 						selectParent._selected._setAttrC('v',false);
+						if(selectParent._selected._parent._containerBoolean)
+							selectParent._selected._parent._setAttr('v',false);
 					}
 					selectParent._selected=this;
 				}else if(selectParent._selected===this){
@@ -639,14 +645,16 @@ gui.Boolean=class extends gui.Item{
 gui.Boolean.prototype.type="boolean";
 gui.Boolean.prototype.eB=function(v){
 	v=(v==0||v==false)?0:1;
-	this._setAttr('eB',v);
-	if(this._parent.containerBoolean)
+	if(this._parent._containerBoolean){
 		this._parent._setAttr('eB',v);
+	}else{
+		this._setAttr('eB',v);
+	}
 };
 gui.Boolean.prototype.select=function(v){
 	if(String(v)!=this._attr('select')){ //if select prop value is changing...
 		this._setAttr('select',v);
-		if(this._parent.containerBoolean)
+		if(this._parent._containerBoolean)
 			this._parent._setAttr('select',v);
 		var thisItem=this;
 		this.v=this.__proto__.v;
@@ -695,9 +703,9 @@ gui.Boolean.prototype.select=function(v){
 //////////////////////////////////////////////////////////////////////////////
 // containers
 addCSS(`
-[type='container'] > .title:empty {display:none}
-[type='container'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);}
-[type='container'] > [v] {display:block}
+[type="container"] > .title:empty {display:none}
+[type="container"] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);}
+[type="container"] > [v] {display:block}
 `);
 gui.Container=class extends gui.Item{
 	_initContent(){
@@ -846,7 +854,6 @@ gui.Container=class extends gui.Item{
 		//after updates are done, check if there's an untitled boolean value (for a cleaner look&feel)
 		if(this._containerBoolean){
 			this._containerBoolean._unbind();
-			this._containerBoolean._element.style.display=this._containerBooleanRevertDisplay;
 		}
 		this._containerBoolean=this._checkContainerBool();
 		if(this._containerBoolean){
@@ -854,15 +861,16 @@ gui.Container=class extends gui.Item{
 			this._setAttr('select',this._containerBoolean._attr('select'));
 			this._setAttr('v',this._containerBoolean._prop.v);
 			this._containerBoolean._bind(this);
-			this._containerBooleanRevertDisplay=this._containerBoolean._element.style.display;
-			this._containerBoolean._element.style.display='none';
+			this._containerBoolean._setAttr('eB',null);
+			console.log(this._containerBoolean._attr('eB'));
+			console.log(this._containerBoolean._element);
 		}else{
 			this._setAttr('eB',null);
 			this._setAttr('select',null);
 		}
 	}
 }
-gui.Container.prototype.type='container';
+gui.Container.prototype.type="container";
 //////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////
