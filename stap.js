@@ -490,8 +490,12 @@ gui.Item=class{
 		}
 	}
 	_refreshProp(propName,propValue){
-		if(propName in this)this[propName](propValue);
-		else this._default(propValue,propName);
+		try{
+			if(propName in this)this[propName](propValue);
+			else this._default(propValue,propName);
+		}catch(e){
+			this._sendAction({'error':e.toString()});
+		}
 	}
 	_value(v){
 		this._prop.v=v;
@@ -662,7 +666,6 @@ gui.Boolean.prototype.select=function(v){
 			this._bind=function(item){
 				if(thisItem._unbind)thisItem._unbind();
 				item._element.onmousedown=function(){						//onmousedown behavior
-					console.log('mousedown');
 					thisItem._value(true);
 					if(v===0)thisItem._sendAction(true);
 				}
@@ -862,8 +865,6 @@ gui.Container=class extends gui.Item{
 			this._setAttr('v',this._containerBoolean._prop.v);
 			this._containerBoolean._bind(this);
 			this._containerBoolean._setAttr('eB',null);
-			console.log(this._containerBoolean._attr('eB'));
-			console.log(this._containerBoolean._element);
 		}else{
 			this._setAttr('eB',null);
 			this._setAttr('select',null);
@@ -1023,14 +1024,10 @@ gui.Item.prototype.P=function(v){
 	//TODO: add animated moves
 	var insertBefore,parent;
 	if(v.constructor===Array){
-		console.log('trying to insert',v);
 		parent=gui.rootContainer;
 		for(var i=0;i<v.length-1;i++){
-			console.log(i,parent);
 			parent=parent._getChild(v[i]);
-			console.log(i,parent);
 		}
-		console.log(i,v[i]);
 		v=v[i];
 		if(this._prop.id!==undefined)this._parent._childmap[this._prop.id]=undefined;
 	}else{
