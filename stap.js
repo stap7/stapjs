@@ -389,6 +389,10 @@ gui.Item=class{
 		prop=this._getParentProps();
 		for(var propName in prop)
 			this._refreshProp(propName,prop[propName]);
+		// if(this._afterInit){
+			// var thisItem=this;
+			// setTimeout(function(){thisItem._afterInit();},1);
+		// }
 	}
 	_initContent(){
 		this._element=document.createElement('div');										//make element
@@ -585,15 +589,16 @@ gui.Number.prototype.type='number';
 //////////////////////////////////////////////////////////////////////////////
 // boolean items
 addCSS(`
-[type="boolean"]{text-align:left;cursor:pointer;user-select: none;}
-[type="boolean"]:active, [type="boolean"][v="true"] {background-color:var(--colorTrue) !important;}
-[type="boolean"][select="-1"], [type="boolean"][select="0"] {min-width:100px;text-align:center;display:inline-block;padding:.4em;color:var(--color1);border:1px solid rgba(0,0,0,0.2);background-color:var(--colorFalse);box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);cursor:pointer;vertical-align:middle;border-radius:4px;}
-[type="boolean"][select="1"], [type="boolean"][select="2"] {display:block;}
-[type="boolean"][select="1"][v="false"]:before {content:"\\029be" " ";display:inline;}
-[type="boolean"][select="1"][v="true"]:before {content:"\\029bf" " ";display:inline;}
-[type="boolean"][select="2"][v="false"]:before {content:"\\2610" " ";display:inline;}
-[type="boolean"][select="2"][v="true"]:before {content:"\\2611" " ";display:inline;}
-[type="boolean"][eB="0"] {pointer-events:none; opacity:.5; contenteditable:false}
+[eB="1"] {cursor:pointer;user-select:none;}
+[eB="0"] {pointer-events:none;opacity:.5;contenteditable:false}
+[select]:active,[select][v="true"] {background-color:var(--colorTrue) !important;}
+[select="-1"],[select="0"] {min-width:100px;text-align:center;display:inline-block;padding:.4em;color:var(--color1);border:1px solid rgba(0,0,0,0.2);background-color:var(--colorFalse);box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);cursor:pointer;vertical-align:middle;border-radius:4px;}
+[type="boolean"][select="1"],[type="boolean"][select="2"] {display:block;text-align:left}
+[select="1"][v="false"]:before {content:"\\029be" " ";display:inline;}
+[select="1"][v="true"]:before {content:"\\029bf" " ";display:inline;}
+[select="2"][v="false"]:before {content:"\\2610" " ";display:inline;}
+[select="2"][v="true"]:before {content:"\\2611" " ";display:inline;}
+[type='container'][select="1"],[type='container'][select="2"] {box-shadow:2px 2px 2px -1px rgba(0,0,0,0.2)}
 `);
 gui.Boolean=class extends gui.Item{
 	_initContent(){
@@ -601,10 +606,12 @@ gui.Boolean=class extends gui.Item{
 		this._content=this._element;
 		this._title=this._element;
 		this._parent._placeChildElement(this);
+		
 	}
 	v(v){
 		if(this._attr('select')){
 			this._setAttrC('v',v);
+			if(this._parent._containerBoolean)this._parent._setAttr('v',v);
 			if(this._attr('select')=='-1'){
 				if(v){
 					var e=this;
@@ -615,7 +622,7 @@ gui.Boolean=class extends gui.Item{
 				var selectParent=this._parent;
 				while(selectParent._prop.select!==1 && selectParent!==gui.rootContainer)
 					selectParent=selectParent._parent;
-				if(selectParent._prop.select!==1)selectParent=e._parent;
+				if(selectParent._prop.select!==1)selectParent=this._parent;
 				if(v){
 					if(selectParent._selected && selectParent._selected!==this){
 						selectParent._selected._prop.v=false;
@@ -630,40 +637,57 @@ gui.Boolean=class extends gui.Item{
 	}
 }
 gui.Boolean.prototype.type="boolean";
-gui.Boolean.prototype.eB=function(v){this._setAttr('eB',v);};
+gui.Boolean.prototype.eB=function(v){
+	v=(v==0||v==false)?0:1;
+	this._setAttr('eB',v);
+	if(this._parent.containerBoolean)
+		this._parent._setAttr('eB',v);
+};
 gui.Boolean.prototype.select=function(v){
-	if(String(v)!=this._attr('select')){
+	if(String(v)!=this._attr('select')){ //if select prop value is changing...
 		this._setAttr('select',v);
-		var item=this;
+		if(this._parent.containerBoolean)
+			this._parent._setAttr('select',v);
+		var thisItem=this;
 		this.v=this.__proto__.v;
-		if(v===0){
-			this._element.onclick=null;
-			this._element.onmousedown=function(){							//onmousedown behavior
-				item._value(true);
-				item._sendAction(true);
-			}
-			this._element.onmouseup=function(){								//onmouseup behavior
-				item._value(false);
-				item._sendAction(false);
-			}
-		}else{
-			this._element.onmousedown=this._element.onmouseup=null;
-			if(v<0){
-				this._element.onclick=function(){							//onclick behavior
-					item._sendAction(true);
+		if(v===0){		//holddown button
+			this._bind=function(item){
+				if(thisItem._unbind)thisItem._unbind();
+				item._element.onmousedown=function(){						//onmousedown behavior
+					console.log('mousedown');
+					thisItem._value(true);
+					if(v===0)thisItem._sendAction(true);
 				}
-			}else{
-				this._element.onclick=function(){							//select/deselect behavior
-					if(item._prop.v){
-						item._sendAction(false);
-						item._value(false);
+				item._element.onmouseup=function(){							//onmouseup behavior
+					thisItem._value(false);
+					thisItem._sendAction(v!==0);
+				}
+				thisItem._unbind=function(){item._element.onmousedown=item._element.onmouseup=null;}
+			}
+		}else if(v<0){	//click button
+			this._bind=function(item){
+				if(thisItem._unbind)thisItem._unbind();
+				item._element.onclick=function(){							//click behavior
+					thisItem._sendAction(true);
+				}
+				thisItem._unbind=function(){item._element.onclick=null;}
+			}
+		}else{			//select/checkbox/radio button
+			this._bind=function(item){
+				if(thisItem._unbind)thisItem._unbind();
+				item._element.onclick=function(){							//select/deselect behavior
+					if(thisItem._prop.v){
+						thisItem._sendAction(false);
+						thisItem._value(false);
 					}else{
-						item._sendAction(true);
-						item._value(true);
+						thisItem._sendAction(true);
+						thisItem._value(true);
 					}
-				};
+				}
+				thisItem._unbind=function(){item._element.onclick=null;}
 			}
 		}
+		this._bind(this);
 		if('v' in this._prop)
 			this.v(this._prop.v);
 	}
@@ -672,7 +696,8 @@ gui.Boolean.prototype.select=function(v){
 // containers
 addCSS(`
 [type='container'] > .title:empty {display:none}
-[type='container'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+[type='container'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);}
+[type='container'] > [v] {display:block}
 `);
 gui.Container=class extends gui.Item{
 	_initContent(){
@@ -697,6 +722,17 @@ gui.Container=class extends gui.Item{
 	_placeChildElement(child){
 		this._content.appendChild(child._element);
 		child._outterElement=child._element;
+	}
+	_checkContainerBool(){
+		var boolItem;
+		for(var item of this){
+			if(item.type==='boolean')
+				if(boolItem)return null;
+			else
+				boolItem=item;
+		}
+		if(boolItem && (boolItem._prop.title=='' || (!boolItem._prop.title && !boolItem._prop.id)))
+			return boolItem;
 	}
 	_newChild(prop){
 		var type=gui.getType(prop);
@@ -799,13 +835,31 @@ gui.Container=class extends gui.Item{
 	}
 	_default(propValue,propName){
 		for(var child of this){
-			if(propName in child._prop){
+			if(!(propName in child._prop)){
 				child._refreshProp(propName,propValue);
 			}
 		}
 	}
-	v(updates){		//cycle through all updates for this container
+	v(updates){
+		//cycle through all updates for this container
 		for(var i of updates)this._processProp(gui.prop(i));
+		//after updates are done, check if there's an untitled boolean value (for a cleaner look&feel)
+		if(this._containerBoolean){
+			this._containerBoolean._unbind();
+			this._containerBoolean._element.style.display=this._containerBooleanRevertDisplay;
+		}
+		this._containerBoolean=this._checkContainerBool();
+		if(this._containerBoolean){
+			this._setAttr('eB',this._containerBoolean._attr('eB')||1);
+			this._setAttr('select',this._containerBoolean._attr('select'));
+			this._setAttr('v',this._containerBoolean._prop.v);
+			this._containerBoolean._bind(this);
+			this._containerBooleanRevertDisplay=this._containerBoolean._element.style.display;
+			this._containerBoolean._element.style.display='none';
+		}else{
+			this._setAttr('eB',null);
+			this._setAttr('select',null);
+		}
 	}
 }
 gui.Container.prototype.type='container';
@@ -830,7 +884,7 @@ gui.Container.prototype.type='container';
 			gui.rootContainer._content.innerHTML='';
 			gui.rootContainer._childmap={};
 		}
-		gui.rootContainer=new gui.Container({select:-1},gui.rootOrigin);
+		gui.rootContainer=new gui.Container({select:-1,eB:1},gui.rootOrigin);
 		gui.rootContainer._parent=null;
 		gui.rootContainer.error=gui.error;
 		gui.rootContainer.require=gui.require;
@@ -1117,7 +1171,7 @@ gui.Item.prototype.y=function(v){
 //////////////////////////////////////////////////////////////////////////////
 // additional text options
 addCSS(`
-[contenteditable=true] {background-color:white;min-width:100px;padding-left:5px;padding-right:5px;border:solid 1px lightgray;font-family:monospace}
+[contenteditable=true] {background-color:white;min-width:100px;padding-left:5px;padding-right:5px;border:solid 1px lightgray;font-family:monospace;;pointer-events:all}
 `);
 gui.Text.prototype.eT=function(v){
 	var c=this._content;
@@ -1252,7 +1306,7 @@ gui.Mkdn.prototype.eT=function(v){
 //////////////////////////////////////////////////////////////////////////////
 // popup
 addCSS(`
-[type='popup'] {position:absolute;top:0px;left:0px;width:99%;height:99%;background-color:rgba(255,255,255,.5)}
+[type='popup'] {position:absolute;top:0px;left:0px;width:99%;height:99%;background-color:rgba(255,255,255,.5);pointer-events:all}
 [type='popup'] > div {top:50%;left:50%;transform:translate(-50%,-50%);width:50%;border:solid 1px gray;border-radius:4px;background-color:var(--color0);padding:1em}
 [type='popup'] > * > .title:empty {display:none}
 [type='popup'] > * > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
