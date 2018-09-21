@@ -111,6 +111,13 @@ HTMLElement.prototype._removeListeners=function(){
 			this.removeEventListener(event,this._listeners[event]);
 		}
 }
+function objectify(o){
+	var r={};
+	for(var key in o)
+		if(typeof(o[key])=='object')r[key]=objectify(o[key]);
+		else r[key]=o[key];
+	return r;
+}
 //////////////////////////////////////////////////////////////////////////////
 // Logging
 //    call logToConsole() to log all stap messages to console
@@ -153,8 +160,8 @@ var task={},ws,recv;
 //////////////////////////////////////////////////////////////////////////////
 
 
-function gui(data){
-	logline('>',data);
+function gui(data,log=true){
+	if(log)logline('>',data);
 	data=gui.prop(data);
 	if('id' in data){
 		if(data.id.constructor===Array)
@@ -182,13 +189,11 @@ gui.REQUIRED={
 gui.OPTIONS=new Set(['$','O','P','Q','R','S','T','U','ease','easeout']);
 gui.OPTION_VALUES_IMPLEMENTED={
 	select:v=>[-1,0,1,2].indexOf(v)!==-1,
-	e:v=>(v in gui.EVENTS),
 	ease:v=>(v in gui.EASE)
 };
 gui.COLOROPTIONS=new Set(['bg','c','bdc','f']);
 gui.ANIMATABLE=new Set(['x','y','w','h','r','bg','bd','bdw','bdc','pad','c','rot','thk','f']);
 gui.EASE={0:'Power0',1:'Power1',2:'Power2',3:'Power3',4:'Power4',back:'Back',elastic:'Elastic',bounce:'Bounce'};
-gui.EVENTS={};
 gui.ums=function(){return (new Date()).getTime()-gui.startTime;};
 gui.sendAction=function(id,value){
 	var time=gui.ums();
@@ -259,8 +264,6 @@ gui.require=function(require){
 				errors.push(propName);
 			else if(propName in gui.REQUIRED)
 				load(gui.REQUIRED[propName]);
-			// else if(!markerdefs && require.options[i].startsWith('end'))
-				// initMarkers(); //TODO: move initMarkers call into REQUIRED
 		}
 		if(errors.length){
 			gui.sendAction(0,{error:'Sorry, I cannot handle the required property option(s): '+errors});
@@ -324,28 +327,6 @@ gui.require=function(require){
 		if(ws)ws.close();
 	}
 };
-gui.agent=function(v){
-	for(let i of v){
-		if(i==='url'){
-			gui.sendAction(0,{url:location});
-		}else if(i==='screen'){
-			function objectify(o){
-				var r={};
-				for(var key in o)
-					if(typeof(o[key])=='object')r[key]=objectify(o[key]);
-					else r[key]=o[key];
-				return r;
-			}
-			gui.sendAction(0,{'screen':objectify(screen)});
-		}else if(i==='userAgent'){
-			gui.sendAction(0,{'userAgent':navigator.userAgent});
-		}else if(i==='ip'){
-			fetch('https://api.ipify.org/').then(r=>r.text()).then(ip=>{
-				gui.sendAction(0,{'ip':ip});
-			});
-		}
-	}
-}
 gui.template=function(v){load(v);}
 //////////////////////////////////////////////////////////////////////////////
 // prototypical gui item
@@ -454,39 +435,46 @@ gui.Item=class{
 				else ani.ani.kill();
 			};
 			aniopt.onUpdateParams=[curopt];
-			//optional receipt once animation ends
-			if(prop.R&2){
-				aniopt.onComplete=function(){
-					if('Q' in prop){
-						//send receipt with Qid
-						gui.sendAction(prop.Q,[2]);
-						//remove animation from gui.animations
-						delete gui.animations[prop.Q];
-					}else{
-						//send receipt with item id
-						gui.sendAction(e._prop.id||e._getIndex(),[2]);
-					}
-				};
-			}else if('Q' in prop){
-				//remove animation from gui.animations
-				aniopt.onComplete=function(){
+			//remove animation from gui.animations
+			aniopt.onComplete=function(){
+				e._update(prop);
+				if('Q' in prop)
 					delete gui.animations[prop.Q];
-				}
 			}
 			//start animation
 			ani.ani=TweenLite.to(curopt,animate,aniopt);
 			//add animation to gui.animations
-			if('Q' in prop)
+			if('Q' in prop){
 				gui.animations[prop.Q]=ani.ani;
+			}
 		}
+	}
+	_delay(prop,delay){
+		var e=this,
+			timeoutId=setTimeout(function(){
+				if('Q' in prop)delete gui.queue[prop.Q];
+				e._update(prop);
+			},delay);
+		if('Q' in prop)gui.queue[prop.Q]=timeoutId;
 	}
 	_update(prop){
 		delete prop.id;
-		if(prop.S)this._animate(prop);
-		Object.assign(this._prop,prop);
-		for(var propName in prop){
-			this._refreshProp(propName,prop[propName]);
-			if(prop[propName]===null)delete prop[propName];
+		if(prop.U){				//optional delay
+			let delay=prop.U-gui.ums();
+			delete prop.U;
+			this._delay(prop,delay);
+		}else if(prop.T){		//optional delay
+			let delay=prop.T*1000;
+			delete prop.T;
+			this._delay(prop,delay);
+		}else if(prop.S){
+			this._animate(prop);
+		}else{
+			Object.assign(this._prop,prop);
+			for(var propName in prop){
+				this._refreshProp(propName,prop[propName]);
+				if(prop[propName]===null)delete prop[propName];
+			}
 		}
 	}
 	_refreshProp(propName,propValue){
@@ -553,7 +541,7 @@ gui.Item=class{
 			if(fullname.length>1)elementid=fullname.reverse();
 		}
 		gui.sendAction(elementid,v);
-		this.O();
+		this.O(1);
 	}
 	v(v){this._content.innerText=v;}
 	id(){}
@@ -706,6 +694,7 @@ gui.Boolean.prototype.select=function(v){
 //////////////////////////////////////////////////////////////////////////////
 // containers
 addCSS(`
+[type="container"] {display:grid;grid-template-rows: auto 1fr;}
 [type="container"] > .title:empty {display:none}
 [type="container"] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);}
 [type="container"] > [v] {display:block}
@@ -761,11 +750,13 @@ gui.Container=class extends gui.Item{
 			var propType=gui.getType(prop);
 			if(child._typeCheck(propType)){
 				child._update(prop);							//if value compatible, update child properties
-			}else{												//if value incompatible, replace child with new one
+			}else if(child._parent){							//if value incompatible, replace child with new one
 				if(child._prop.id)prop.id=child._prop.id;		//correct id type in case prop.id was a number
 				var newchild=new propType(Object.assign({},child._prop,prop),this);
 				this._content.replaceChild(newchild._outterElement,child._outterElement);
 				if(child._prop.id)this._childmap[prop.id]=newchild;
+			}else{
+				gui.sendAction(0,{error:'Root element must be a simple container.'});
 			}
 		}
 	}
@@ -786,18 +777,8 @@ gui.Container=class extends gui.Item{
 				child._search(prop);
 		}
 	}
-	_delayedProcessing(prop,delay){
-		var e=this,
-			timeoutId=setTimeout(function(){
-				if('Q' in prop)
-					delete gui.queue[prop.Q];
-				e._processProp(prop);
-			},delay);
-		if('Q' in prop)
-			gui.queue[prop.Q]=timeoutId;
-	}
 	_processProp(prop){
-		if('Q' in prop){
+		if('Q' in prop){	//clear and remove prior instances of Q-id in animation and timeout queues
 			if(gui.queue[prop.Q]){
 				clearTimeout(gui.queue[prop.Q]);
 				delete gui.queue[prop.Q];
@@ -807,19 +788,6 @@ gui.Container=class extends gui.Item{
 				delete gui.animations[prop.Q];
 			}
 		}
-		if(prop.U){		//optional delay
-			let delay=prop.U-gui.ums();
-			delete prop.U;
-			this._delayedProcessing(prop,delay);
-			return;
-		}
-		if(prop.T){		//optional delay
-			let delay=prop.T*1000;
-			delete prop.T;
-			this._delayedProcessing(prop,delay);
-			return;
-		}
-		if(prop.R&1)gui.sendAction(('Q' in prop)?prop.Q:(this._prop.id||this._getIndex()),[1]);
 		if('$' in prop){
 			this._search(prop);
 		}else{
@@ -895,6 +863,8 @@ gui.Container.prototype.type="container";
 		}
 		gui.rootContainer=new gui.Container({select:-1,eB:1},gui.rootOrigin);
 		gui.rootContainer._parent=null;
+		document.body._item=gui.rootContainer;
+		window._item=gui.rootContainer;
 		gui.rootContainer.error=gui.error;
 		gui.rootContainer.require=gui.require;
 		gui.rootContainer.agent=gui.agent;
@@ -919,7 +889,7 @@ gui.Container.prototype.type="container";
 		gui(null);
 		gui.startTime=(new Date()).getTime();
 		gui.sendAction(0,[0]);
-		window.addEventListener('unload',function(){gui.sendAction(0,[1]);},false);
+		window.addEventListener('unload',function(){gui.sendAction(0,['onunload']);},false);
 	}
 	function connectToTaskScript(){
 		//	connect gui.action to task.userAction
@@ -1020,6 +990,40 @@ gui.Container.prototype.type="container";
 //////////////////////////////////////////////////////////////////////////////
 // additional common options
 
+gui.Item.prototype._=function(v){if(v)gui(v,false);};
+
+gui.INFO={
+	async ip(){return gui.ip=await fetch('https://api.ipify.org/').then(r=>r.text());},
+	userAgent(){return navigator.userAgent;},
+	url(){return location.href;},
+	screen(){return objectify(screen);},
+	id(item){return item._getIndex();},
+	mouseX(item){return item._event.clientX-item._element.getBoundingClientRect().left;},
+	mouseY(item){return item._event.clientY-item._element.getBoundingClientRect().top;},
+	key(item){return item._event.key},
+	code(item){return item._event.code},
+	keyLocation(item){return item._event.location},
+	modKeys(item){
+		var e=item._event;
+		return e.shiftKey+(2*e.altKey)+(4*e.ctrlKey)+(8*e.metaKey);
+	},
+	bounds(item){return item._element.getBoundingClientRect()},
+}
+gui.Item.prototype._getInfo=function(info){
+	if(info in gui.INFO)
+		return gui.INFO[info](this);
+	else
+		return this._prop[info];
+}
+gui.Item.prototype.R=async function(v){
+	//TODO: color animation messes with present color values
+	var r=[];
+	if(v[0]!==null&&v[0]!==undefined)r.push(v[0]);
+	for(var i=1;i<v.length;i++)
+		r.push(await this._getInfo(v[i]));
+	gui.sendAction(this._prop.id||this._getIndex(),r);
+}
+
 gui.Item.prototype.P=function(v){
 	//TODO: add animated moves
 	var insertBefore,parent;
@@ -1047,61 +1051,56 @@ gui.Item.prototype.P=function(v){
 	}
 };
 
-gui.Item.prototype.O=function(){
-	//TODO: this currently doesn't account for QRTU
-	if(this._onedit!==undefined){
-		this._parent._processChild(this,gui.prop(this._onedit));
-	}
-	for(var parent=this._parent;parent;parent=parent._parent){
-		if(parent._prop.onsubedit){
-			if(parent._parent)
-				parent._parent._processChild(parent,gui.prop(parent._prop.onsubedit));
-			else
-				gui(gui.prop(parent._prop.onsubedit));
-			break;
-		}
-	}
+gui.Item.prototype.O=function(v){
+	var update=v==1?this._onedit:this._prop[v];
+	if(update)
+		(this._parent||gui.rootOrigin)._processChild(this,update);
 }
 
-gui._sendEventKey=function(c,v){return (e)=>c._sendAction([v,e.keyCode]);}
-gui._sendEventXY=function(c,v){
-	return (e)=>{
-		var rect=c._element.getBoundingClientRect();
-		c._sendAction([v,e.clientX-rect.left,e.clientY-rect.top]);
+gui.onEvent=function(e){
+	if(!e.repeat){
+		this._item._event=e;
+		this._item.O('on'+e.type);
 	}
 }
-gui.EVENTS={
-	30:['keypress',gui._sendEventKey],
-	31:['keydown',gui._sendEventKey,{once:true}],
-	32:['keyup',gui._sendEventKey],
-	40:['click',gui._sendEventXY],
-	41:['dblclick',gui._sendEventXY],
-	42:['mousedown',gui._sendEventXY],
-	43:['mouseup',gui._sendEventXY],
-	44:['mousemove',gui._sendEventXY],
-	45:['mouseenter',gui._sendEventXY],
-	46:['mouseleave',gui._sendEventXY],
-	47:['mouseover',gui._sendEventXY],
-	48:['mouseout',gui._sendEventXY]
+gui.Item.prototype._onEvent=function(eventType,v){
+	if(v && v.constructor===Object){
+		if(!v.R)this._prop[eventType].R=[eventType];
+		(this===gui.rootContainer?document.body:this._element).addEventListener(eventType.substring(2),gui.onEvent);
+	}else{
+		(this===gui.rootContainer?document.body:this._element).removeEventListener(eventType.substring(2),gui.onEvent);
+	}
+}
+gui.Item.prototype.onkeydown=function(v){this._onEvent('onkeydown',v);};
+gui.Item.prototype.onkeyup=function(v){this._onEvent('onkeyup',v);};
+gui.Item.prototype.onclick=function(v){this._onEvent('onclick',v);};
+gui.Item.prototype.ondblclick=function(v){this._onEvent('ondblclick',v);};
+gui.Item.prototype.onmousemove=function(v){this._onEvent('onmousemove',v);};
+gui.Item.prototype.onmouseover=function(v){this._onEvent('onmouseover',v);};
+gui.Item.prototype.onmouseout=function(v){this._onEvent('onmouseout',v);};
+gui.Item.prototype.onmouseenter=function(v){this._onEvent('onmouseenter',v);};
+gui.Item.prototype.onmouseleave=function(v){this._onEvent('onmouseleave',v);};
+gui.Item.prototype.onmousedown=function(v){this._onEvent('onmousedown',v);};
+gui.Item.prototype.onmouseup=function(v){this._onEvent('onmouseup',v);};
+gui.Item.prototype.onfocus=function(v){this._onEvent('onfocus',v);};
+gui.Item.prototype.onblur=function(v){this._onEvent('onblur',v);};
+// gui.Item.prototype.onresize=function(v){this._onEvent('onresize',v);};
+// gui.Item.prototype.onscroll=function(v){this._onEvent('onscroll',v);};
+// gui.Item.prototype.onselect=function(v){this._onEvent('onselect',v);};
+// gui.Item.prototype.oncopy=function(v){this._onEvent('oncopy',v);};
+// gui.Item.prototype.oncut=function(v){this._onEvent('oncut',v);};
+// gui.Item.prototype.onpaste=function(v){this._onEvent('onpaste',v);};
+// gui.Item.prototype.ondragstart=function(v){this._onEvent('ondragstart',v);};
+// gui.Item.prototype.ondrag=function(v){this._onEvent('ondrag',v);};
+// gui.Item.prototype.ondragend=function(v){this._onEvent('ondragend',v);};
+// gui.Item.prototype.onoverlap=function(v){this._onEvent('onoverlap',v);};
+
+gui.Text.prototype.onedit=function(v){
+	if(v && v.constructor===Object)this._onedit=v;
+	else this._onedit=undefined;
 };
-gui.Item.prototype.e=function(v){
-	//TODO: add root-intended events to window
-	var e,f;
-	for(e in this._eventListeners)
-		this._element.removeEventListener(e,this._eventListeners[e]);
-	this._eventListeners={};
-	for(e of v){
-		f=gui.EVENTS[e][1](this,e);
-		this._element.addEventListener(gui.EVENTS[e][0],f,gui.EVENTS[e][2]);
-		this._eventListeners[gui.EVENTS[e][0]]=f;
-	}
-}
-
-gui.Text.prototype.onedit=function(v){this._onedit=v;};
 gui.Number.prototype.onedit=gui.Text.prototype.onedit;
 gui.Boolean.prototype.onedit=gui.Text.prototype.onedit;
-
-gui.Container.prototype.onsubedit=function(){}
 
 gui.Text.prototype.patronym=function(v){this._patronym=v;}
 gui.Number.prototype.patronym=gui.Text.prototype.patronym;
