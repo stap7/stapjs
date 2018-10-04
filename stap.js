@@ -1,4 +1,4 @@
-/*base html5 template for STAP (v7.14) visualization
+/*base html5 template for STAP visualization (STAP spec v7.15.20181002)
 
 	What is STAP? 
 		http://stap7.github.io/
@@ -347,7 +347,7 @@ addCSS(`
 }
 body {background-color:var(--color0);color:var(--color1);font-size:16pt;}
 [level="-1"],[level="0"],[level="-1"]>*,[level="0"]>* {margin:0px;padding:0px;width:100%;height:100%;}
-div {font-size:14pt;position:relative;box-sizing:border-box;font-size:98%;flex:0 0 auto;margin:3px;}
+div {font-size:14pt;position:relative;box-sizing:border-box;font-size:98%;flex:0 0 auto;flex-direction:column;margin:3px;}
 .title:not(empty):not(td) {white-space:nowrap;display:inline-block;}
 [v] {overflow:auto}
 `);
@@ -560,7 +560,7 @@ gui.Item=class{
 //////////////////////////////////////////////////////////////////////////////
 // text items
 addCSS(`
-[type='text'] > .title:empty {display:none}
+[type='text'] > .title:empty {width:0px;height:0px;overflow:hidden}
 [type='text'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
 [type='text'] > [v] {white-space:pre-wrap;}
 `);
@@ -569,7 +569,7 @@ gui.Text.prototype.type='text';
 //////////////////////////////////////////////////////////////////////////////
 // number items
 addCSS(`
-[type='number'] > .title:empty {display:none}
+[type='number'] > .title:empty {width:0px;height:0px;overflow:hidden}
 [type='number'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);vertical-align:top;margin-top:inherit}
 [type='number'] > .title:not(empty):after {content:":"}
 [type='number'] > [v] {display:inline-block}
@@ -695,7 +695,7 @@ gui.Boolean.prototype.select=function(v){
 // containers
 addCSS(`
 [type="container"] {display:grid;grid-template-rows: auto 1fr;}
-[type="container"] > .title:empty {display:none}
+[type="container"] > .title:empty {width:0px;height:0px;overflow:hidden}
 [type="container"] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);}
 [type="container"] > [v] {display:block}
 `);
@@ -888,7 +888,7 @@ gui.Container.prototype.type="container";
 	function onTaskConnect(){
 		gui(null);
 		gui.startTime=(new Date()).getTime();
-		gui.sendAction(0,[0]);
+		gui.sendAction(0,['onload']);
 		window.addEventListener('unload',function(){gui.sendAction(0,['onunload']);},false);
 	}
 	function connectToTaskScript(){
@@ -938,6 +938,14 @@ gui.Container.prototype.type="container";
 			xhttp.open("POST",url, true);
 			if(gui.httpParrotHeader)xhttp.setRequestHeader('X-parrot',gui.httpParrotHeader);
 			xhttp.send(body);
+		}
+		function get(url){
+			var xhttp = new XMLHttpRequest();
+			xhttp.onreadystatechange = onReady;
+			if(gui.httpAppendToURL)url+=(url.indexOf('?')==-1?'?':'&')+gui.httpAppendToURL;
+			xhttp.open("GET",url, true);
+			if(gui.httpParrotHeader)xhttp.setRequestHeader('X-parrot',gui.httpParrotHeader);
+			xhttp.send();
 		}
 		gui.action=function(time,id,val){
 			post(task.location,JSON.stringify([time,id,val]));
@@ -1093,7 +1101,59 @@ gui.Item.prototype.onblur=function(v){this._onEvent('onblur',v);};
 // gui.Item.prototype.ondragstart=function(v){this._onEvent('ondragstart',v);};
 // gui.Item.prototype.ondrag=function(v){this._onEvent('ondrag',v);};
 // gui.Item.prototype.ondragend=function(v){this._onEvent('ondragend',v);};
-// gui.Item.prototype.onoverlap=function(v){this._onEvent('onoverlap',v);};
+
+const OVERLAP = new Event('overlap');
+const OVEROUT = new Event('overout');
+gui.checkForOverlap={};
+gui.overlap=function(b1,b2){
+	if(b1.left>b2.right||b2.left>b1.right)return false;
+	if(b1.top>b2.bottom||b2.top>b1.bottom)return false;
+	return true;
+}
+gui._items=0;
+gui.Item.prototype._getUniqueIndex=function(){return this.__uniqueIndex||(this.__uniqueIndex=++gui._items)};
+gui.Item.prototype._moveHook=function(){};
+gui.Item.prototype._overlapChecking=function(){
+	if((this._prop.onoverlap||this._prop.onoverout)){
+		if(!gui.checkForOverlap[this._getUniqueIndex()]){
+			gui.checkForOverlap[this._getUniqueIndex()]=this;
+			this._moveHook=this._checkOverlap;
+			this._checkOverlap();
+		}
+	}else{
+		delete gui.checkForOverlap[this._getUniqueIndex()];
+		this._moveHook=function(){};
+	}
+}
+gui.Item.prototype.onoverlap=function(v){
+	this._onEvent('onoverlap',v);
+	this._overlapChecking();
+};
+gui.Item.prototype.onoverout=function(v){
+	this._onEvent('onoverout',v);
+	this._overlapChecking();
+}
+gui.Item.prototype._checkOverlap=function(){
+	var oid,item,myBounds=this._element.getBoundingClientRect();
+	for(oid in gui.checkForOverlap){
+		item=gui.checkForOverlap[oid];
+		if(item!=this){
+			if(gui.overlap(item._element.getBoundingClientRect(),myBounds)){
+				this._element.dispatchEvent(OVERLAP);
+				item._element.dispatchEvent(OVERLAP);
+				if(!this._priorOverlap)this._priorOverlap={};
+				if(!item._priorOverlap)item._priorOverlap={};
+				this._priorOverlap[item._getUniqueIndex()]=item;
+				item._priorOverlap[this._getUniqueIndex()]=this;
+			}else if(this._priorOverlap && this._priorOverlap[item._getUniqueIndex()]){
+				delete this._priorOverlap[item._getUniqueIndex()];
+				delete item._priorOverlap[this._getUniqueIndex()];
+				this._element.dispatchEvent(OVEROUT);
+				item._element.dispatchEvent(OVEROUT);
+			}
+		}
+	}
+}
 
 gui.Text.prototype.onedit=function(v){
 	if(v && v.constructor===Object)this._onedit=v;
@@ -1140,9 +1200,9 @@ gui.Item.prototype.pad=function(v){this._element.style.padding=v;};
 
 gui.Item.prototype.r=function(v){this._element.style.borderRadius=v+'px';};
 
-gui.Item.prototype.w=function(v){this._element.style.width=v;};
+gui.Item.prototype.w=function(v){this._element.style.width=v;this._moveHook();};
 
-gui.Item.prototype.h=function(v){this._element.style.height=v;};
+gui.Item.prototype.h=function(v){this._element.style.height=v;this._moveHook();};
 
 gui.Item.prototype.z=function(v){this._element.style.zIndex=10+v;};
 
@@ -1162,11 +1222,13 @@ gui.Item.prototype.x=function(v){
 	this._element.style.left=v;
 	this._setAttr('x',v);
 	this._parent._setAttr('childPos',this._parent._hasPositionedElements());
+	this._moveHook();
 };
 gui.Item.prototype.y=function(v){
 	this._element.style.top=v;
 	this._setAttr('y',v);
 	this._parent._setAttr('childPos',this._parent._hasPositionedElements());
+	this._moveHook();
 };
 
 //////////////////////////////////////////////////////////////////////////////
@@ -1312,7 +1374,7 @@ gui.Mkdn.prototype.eT=function(v){
 addCSS(`
 [type='popup'] {position:absolute;top:0px;left:0px;width:99%;height:99%;background-color:rgba(255,255,255,.5);pointer-events:all}
 [type='popup'] > div {top:50%;left:50%;transform:translate(-50%,-50%);width:50%;border:solid 1px gray;border-radius:4px;background-color:var(--color0);padding:1em}
-[type='popup'] > * > .title:empty {display:none}
+[type='popup'] > * > .title:empty {width:0px;height:0px;overflow:hidden}
 [type='popup'] > * > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
 `);
 gui.Popup=class extends gui.Container{
