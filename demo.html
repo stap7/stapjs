@@ -1,43 +1,48 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<meta charset="utf-8"/>
 <html><head>
 
 <script src="stap.js"></script>
 <script>
 
+logToConsole();
+
 var SAMPLE_CODE = new Map([
 
-	['some text', `[ "Hello World!", "a STAP container is just a list of item updates" ]`],
+	['some text', `[
+ "Hello World!",
+ "a STAP container is just a list of item updates"
+]`],
 
-	['buttons', `[ {"id":"Press me","v":false}, {"id":"No, press me","v":false} ]`],
-
-	['container w/ radio buttons', `[
- {
-  "id":"Choose a car",
-  "select":1,
-  "v":[
-   {"id":"Subaru","v":false},
-   {"id":"Ford","v":false},
-   {"id":"Tesla","v":false}
-  ]
- },
- "the \\"select\\" property specifies how many items can be selected",
- "select:1 means that only 1 item in the container can be selected at a time (i.e. radio buttons)"
+	['buttons', `[
+ {"id":"Press me","type":"btn"},
+ {"id":"No, press me","type":"btn"}
 ]`],
 
 	['container w/ checkboxes', `[
  {
   "id":"Choose cars",
-  "select":2,
+  "df":{"type":"select"},
   "v":[
-   {"id":"Subaru","v":false},
-   {"id":"Ford","v":false},
-   {"id":"Tesla","v":false}
+   {"id":"Subaru"},
+   {"id":"Ford"},
+   {"id":"Tesla"}
   ]
- },
- "the \\"select\\" property specifies how many items can be selected",
- "select:2 means that many items in the container can be selected at a time (i.e. checkboxes)"
+ }
+]`],
+
+	['container w/ radio buttons', `[
+ {
+  "id":"Choose a car",
+  "df":{"type":"select","group":"cars"},
+  "v":[
+   {"id":"Subaru"},
+   {"id":"Ford"},
+   {"id":"Tesla"}
+  ]
+ }
 ]`],
 
 	['table', `[
@@ -45,44 +50,45 @@ var SAMPLE_CODE = new Map([
   "id":"Personnel",
   "type":"table",
   "head":1,
-  "select":2,
-  "rnd":0.01,
-  "unit":"$",
+  "df":{
+    "group":"wrk",
+    "rnd":0.01,
+    "unit":"$"
+  },
   "v":[
    ["Name","Gender","Salary","Working this week"],
-   {"id":"P801","v":["Max Brownwell","female",2.75,false]},
-   {"id":"P807","v":["Carrie Vanilla","male",2,false]},
-   {"id":"P811","v":["Jenny Jerrings","female",1,true]},
-   {"id":"P832","v":["Jerry Jennings","male",1,false]}
+   {"id":"P801","v":["Max Brownwell","female",2.75,{"type":"select"}]},
+   {"id":"P807","v":["Carrie Vanilla","male",2,{"type":"select"}]},
+   {"id":"P811","v":["Jenny Jerrings","female",1,{"type":"select"}]},
+   {"id":"P832","v":["Jerry Jennings","male",1,{"type":"select"}]}
   ]
  },
  "there are several element types in STAP, including table, popup, path, mkdn, and html"
 ]`],
 
-	['box', `[ {"bg":2,"w":50,"h":50} ]`],
+	['shapes', `{
+ "df":{"w":130,"v":"some text"},
+ "v":[
+  {"shape":0,"bg":2},
+  {"shape":1,"bg":3},
+  {"shape":2,"bg":4},
+  {"shape":["0,100","50,-50","100,100"],"bg":"#faa"}
+ ]
+}`],
 
-	['triangle', `[
- {"type":"path","f":3,"w":50,"h":50,"v":[[0,100],[50,0],[100,100],[0,100]]},
- {"id":0,"rot":90,"S":1}
-]`],
-
-	['color change every 1.5s', `[
- {"id":"time","v":10.5,"rnd":0.001,"S":10.5},
- {"id":"boxy","w":50,"h":50,"bd":"solid"},
- {"id":"boxy","bg":1,"T":1.5},
- {"id":"boxy","bg":2,"T":3},
- {"id":"boxy","bg":3,"T":4.5},
- {"id":"boxy","bg":4,"T":6},
- {"id":"boxy","bg":5,"T":7.5},
- {"id":"boxy","bg":6,"T":9},
- {"id":"boxy","bg":7,"T":10.5}
-]`],
-
-	['bouncing ball', `[
- {"id":"ball","title":"","bg":"radial-gradient(circle at 25% 25%,#59f,#039)","w":50,"h":50,"r":25,"x":0,"y":30},
- {"id":"ball","x":"50%","S":3,"ease":1},
- {"id":"ball","y":200,"S":2,"ease":"bounce"}
+	['animation', `[
+ {"h":100,"v":
+  [
+   {"v":"😊","x":70,"y":50,
+    "onoverlap":{"v":"😖"},"onoverout":{"v":"😵"}},
+   {"id":"box","title":"","lw":2,"w":30,"h":25,
+    "shape":"round","onoverlap":{}},
+   {"id":"box","x":150,"rot":720,"S":3,"ease":1},
+   {"id":"box","y":70,"S":2,"ease":"bounce"}
+  ]
+ }
 ]`]
+
 
 ]);
 
@@ -92,7 +98,7 @@ var SAMPLE_CODE = new Map([
 var task = {
 	
 	start: function(){
-		task.updateUI({
+		task.show({
 			require:{options:['S','ease'],type:['mkdn']},
 			template:`
 				#Preview {background:linear-gradient(to bottom left,white 75%,#dee 85%,#9aa);box-shadow:-1px -1px 1px lightgray;padding:5px}
@@ -100,30 +106,41 @@ var task = {
 				#Warning * {display:inline}
 			`
 		});
-		task.updateUI([
-			{id:"Preview",h:251},
+		task.show([
+			{id:"Preview"},
 			{id:"Sample Code"},
-			{id:"STAP",v:"",eT:4}
+			{id:"STAP",v:"\n",in:2}
 		]);
 		for(var i of SAMPLE_CODE.keys())
-			task.updateUI([{id:"Sample Code",v:[{id:i,v:false}]}]);
+			task.show([{id:"Sample Code",v:[{id:i,type:'btn'}]}]);
 	},
 	
 	userAction: function(time,element,value){
-		task.updateUI({$:'Warning',v:null}); //remove any previously shown warning
+		//TODO: ignore input, catch onkeydown
+		task.show([{id:'Warning',v:null}]); //remove any previously shown warning
 		if(element=='STAP'){
 			try{
-				task.updateUI([{id:'Preview',v:""},{id:'Preview',v:JSON.parse(value)}]);
+				value=JSON.parse(value);
+				if(value.constructor===Array){
+					task.show([{id:'Preview',v:null},{id:'Preview',P:0,v:value}]);
+				}else if(value.constructor===Object){
+					value.id='Preview';
+					value.P=0;
+					task.show([{id:'Preview',v:null},value]);
+				}
 			}catch(e){
-				task.updateUI([{id:'Warning',v:'Invalid JSON string',emp2:1}]);
+				task.show([{id:'Warning',v:'Invalid JSON string',emp2:1}]);
 			}
 		}else{
 			if(SAMPLE_CODE.has(element)){
-				task.updateUI([
-					{id:'Preview',v:''},
-					{id:'STAP',v:SAMPLE_CODE.get(element)},
-					{id:'Preview',v:JSON.parse(SAMPLE_CODE.get(element))}
-				]);
+				value=JSON.parse(SAMPLE_CODE.get(element));
+				if(value.constructor===Array){
+					task.show([{id:'STAP',v:SAMPLE_CODE.get(element)},{id:'Preview',v:null},{id:'Preview',P:0,v:value}]);
+				}else if(value.constructor===Object){
+					value.id='Preview';
+					value.P=0;
+					task.show([{id:'STAP',v:SAMPLE_CODE.get(element)},{id:'Preview',v:null},value]);
+				}
 			}
 		}
 	}

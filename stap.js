@@ -1,4 +1,4 @@
-/*base html5 template for STAP visualization (STAP spec v7.15.20181002)
+/*base html5 template for STAP visualization (STAP spec v7.16.201811121)
 
 	What is STAP? 
 		http://stap7.github.io/
@@ -21,6 +21,7 @@
 */
 
 
+
 "use strict";
 
 //////////////////////////////////////////////////////////////////////////////
@@ -32,7 +33,7 @@ function findCSSrule(selector){
 	for(var i=0;i<document.styleSheets.length;++i){
 		rules=document.styleSheets[i].rules||document.styleSheets[i].cssRules;
 		for(var x=0;x<rules.length;++x){
-			if(rules[x].selectorText==selector)
+			if(rules[x].selectorText.indexOf(selector)>-1)
 				return rules[x];
 		}
 	}
@@ -111,6 +112,7 @@ HTMLElement.prototype._removeListeners=function(){
 			this.removeEventListener(event,this._listeners[event]);
 		}
 }
+function createSVG(type){return document.createElementNS("http://www.w3.org/2000/svg",type);}
 function objectify(o){
 	var r={};
 	for(var key in o)
@@ -162,12 +164,9 @@ var task={},ws,recv;
 
 function gui(data,log=true){
 	if(log)logline('>',data);
-	data=gui.prop(data);
-	if('id' in data){
-		if(data.id.constructor===Array)
-			data.id[0]=0;
-		else
-			data.id=0;
+	data=Object.assign({},gui.prop(data));
+	if('id' in data && data.id.constructor===Array){
+		data.id.unshift(0);
 	}else{
 		data.id=0;
 	}
@@ -186,13 +185,14 @@ gui.REQUIRED={
 	ease:"https://cdnjs.cloudflare.com/ajax/libs/gsap/2.0.1/easing/EasePack.min.js",
 	Mkdn:["https://cdn.jsdelivr.net/npm/marked/marked.min.js","gui.markdown=marked;"]
 };
-gui.OPTIONS=new Set(['$','O','P','Q','R','S','T','U','ease','easeout']);
+gui.OPTIONS=new Set(['*','O','P','Q','R','S','T','U','ease','easeout']);
 gui.OPTION_VALUES_IMPLEMENTED={
 	select:v=>[-1,0,1,2].indexOf(v)!==-1,
 	ease:v=>(v in gui.EASE)
 };
-gui.COLOROPTIONS=new Set(['bg','c','bdc','f']);
-gui.ANIMATABLE=new Set(['x','y','w','h','r','bg','bd','bdw','bdc','pad','c','rot','thk','f']);
+gui.COLOROPTIONS=new Set(['bg','c','lc']);
+gui.SIZEOPTIONS=['x','y','w','h','lw'];
+gui.ANIMATABLE=new Set(['x','y','w','h','bg','lw','lc','c','rot']);
 gui.EASE={0:'Power0',1:'Power1',2:'Power2',3:'Power3',4:'Power4',back:'Back',elastic:'Elastic',bounce:'Bounce'};
 gui.ums=function(){return (new Date()).getTime()-gui.startTime;};
 gui.sendAction=function(id,value){
@@ -200,18 +200,14 @@ gui.sendAction=function(id,value){
 	logline('<',[time,id,value]);
 	gui.action(time,id,value);
 };
+gui.defaultType=function(v){return {object:gui.Bin,string:gui.Txt,number:gui.Num,boolean:gui.Btn}[typeof(v)]};
 gui.getType=function(prop){
-	if(prop.type!==undefined){
-		var type=prop.type.charAt(0).toUpperCase()+prop.type.slice(1)
-		delete prop.type;
+	//TODO: deal w/ prop==null
+	if(prop.type){
+		var type=prop.type.charAt(0).toUpperCase()+prop.type.slice(1);
 		if(type in gui)return gui[type];
-	}else if(prop.v!==undefined){
-		if(prop.v.constructor===Array)return gui.Container;
-		if(prop.v.constructor===String)return gui.Text;
-		if(prop.v.constructor===Number)return gui.Number;
-		if(prop.v.constructor===Boolean)return gui.Boolean;
 	}
-};
+}
 gui.prop=x=>(x===null||x.constructor!==Object)?{v:x}:x;
 gui.getColor=v=>getComputedStyle(document.body).getPropertyValue('--color'+v);
 gui.color=v=>gui.getColor(v)?`var(--color${v})`:v;
@@ -223,7 +219,7 @@ gui.animations={};
 gui.error=function(v){console.error(v);}
 gui.require=function(require){
 	var errors,errorScreen=[];
-	var TYPES=new Set([gui.Item,gui.Text,gui.Number,gui.Boolean,gui.Container]);
+	var TYPES=new Set([gui.Item,gui.Txt,gui.Num,gui.Btn,gui.Bin]);
 	if(require.type){
 		if(require.type.constructor!==Array)require.type=[require.type];
 		errors=[];
@@ -277,7 +273,7 @@ gui.require=function(require){
 			if(!gui.Item.prototype.hasOwnProperty(emp)){
 				errors.push(emp);
 			}else{
-				for(var i=1;i<=require.emphases[emp];++i){
+				for(var i=1;i<=require.emphases[emp];i++){
 					if(!findCSSrule(`[${emp}="${i}"]`))
 						errors.push(`${emp}=${i}`);
 				}
@@ -288,6 +284,29 @@ gui.require=function(require){
 			errorScreen.push({id:'Cannot handle required emphasis type(s)',v:errors});
 		}
 		delete require.emphases;
+	}
+	if(require.shape){
+		errors=[];
+		for(var i=0;i<require.shape.length;i++){
+			if(!findCSSrule(`[shape="${require.shape[i]}"]`))
+				errors.push(require.shape[i]);
+		}
+		if(errors.length){
+			gui.sendAction(0,{error:'Sorry, I cannot handle required shape(s): '+errors});
+			errorScreen.push({id:'Cannot handle required shape(s)',v:errors});
+		}
+		delete require.shape;
+	}
+	if(require.shapes){
+		errors=[];
+		for(var i=1;i<=require.shapes;i++)
+			if(!findCSSrule(`[shape="${i}"]`) && !findCSSrule(`[shape=${i}]`))
+				errors.push(i);
+		if(errors.length){
+			gui.sendAction(0,{error:'Sorry, I cannot handle required shape(s): '+errors});
+			errorScreen.push({id:'Cannot handle required shape(s)',v:errors});
+		}
+		delete require.shapes;
 	}
 	if(require.colors){
 		errors=[];
@@ -341,14 +360,15 @@ addCSS(`
 --color2: #0099ff;
 --color3: #ff9900;
 --color4: #99ff99;
---color5: blue;
---color6: red;
---color7: green;
+--color5: red;
+--color6: green;
+--color7: blue;
 }
-body {background-color:var(--color0);color:var(--color1);font-size:16pt;}
+body {background-color:var(--color0);color:var(--color1);font-size:18pt;}
 [level="-1"],[level="0"],[level="-1"]>*,[level="0"]>* {margin:0px;padding:0px;width:100%;height:100%;}
-div {font-size:14pt;position:relative;box-sizing:border-box;font-size:98%;flex:0 0 auto;flex-direction:column;margin:3px;}
-.title:not(empty):not(td) {white-space:nowrap;display:inline-block;}
+[level] {border:solid 0px var(--color1)}
+div {position:relative;box-sizing:border-box;font-size:96%;flex:0 0 auto;flex-direction:column;margin:3px;}
+.title:not(empty):not(td) {white-space:nowrap;}
 [v] {overflow:auto}
 `);
 gui.Item=class{
@@ -366,30 +386,20 @@ gui.Item=class{
 			this.title(prop.id);
 		}
 		this._prop={id:prop.id};
+		this._initDefaults();
 		this._update(prop);																	//refresh attributes based on self and parent property values
-		prop=this._getParentProps();
-		for(var propName in prop)
-			this._refreshProp(propName,prop[propName]);
-		// if(this._afterInit){
-			// var thisItem=this;
-			// setTimeout(function(){thisItem._afterInit();},1);
-		// }
+		for(var propName in this._parent._defaults)
+			if(!(propName in this._prop))
+				this._refreshProp(propName,this._parent._defaults[propName]);
 	}
 	_initContent(){
 		this._element=document.createElement('div');										//make element
-		this._title=this._element.appendChild(document.createElement('span'));
+		this._title=this._element.appendChild(document.createElement('div'));
 		this._content=this._element.appendChild(document.createElement('div'));				//e.v is a sub-element where content is displayed
 		this._parent._placeChildElement(this);
 	}
-	_getParentProps(){
-		var props={};
-		for(var parent=this._parent;parent;parent=parent._parent){
-			for(var propName in parent._prop)
-				if(!((propName in parent && propName!='patronym') || propName in this._prop || propName in props))
-					props[propName]=parent._prop[propName];
-		}
-		return props;
-	}
+	// _initDefaults(){this._defaults=Object.assign({},this._parent._defaults);}
+	_initDefaults(){}
 	_attr(attr){return this._element.getAttribute(attr);}
 	_setAttr(attr,val){
 		if(val===null)this._element.removeAttribute(attr);
@@ -400,7 +410,6 @@ gui.Item=class{
 		if(val===null)this._content.removeAttribute(attr);
 		else this._content.setAttribute(attr,val);
 	}
-	_typeCheck(type){return (!type)||(type===this.constructor);}
 	_animatable(propName){return gui.ANIMATABLE.has(propName)}
 	_animate(prop){
 		var animate=prop.S,aniopt={},curopt={},e=this;
@@ -409,10 +418,10 @@ gui.Item=class{
 		for(var optKey in prop){
 			if(this._animatable(optKey)){
 				if(gui.COLOROPTIONS.has(optKey)){
-					curopt[optKey]=this._prop[optKey]||this._getParentProps()[optKey]||'rgba(0,0,0,0)';
+					curopt[optKey]=this._prop[optKey]||'rgba(0,0,0,0)';
 					aniopt[optKey]=gui.getColor(prop[optKey])||prop[optKey];
 				}else{
-					curopt[optKey]=this._prop[optKey]||this._getParentProps()[optKey]||(optKey==='thk'?1:0);
+					curopt[optKey]=this._prop[optKey]||this._defaults[optKey]||0;
 					aniopt[optKey]=prop[optKey];
 				}
 				delete prop[optKey];
@@ -458,7 +467,6 @@ gui.Item=class{
 		if('Q' in prop)gui.queue[prop.Q]=timeoutId;
 	}
 	_update(prop){
-		delete prop.id;
 		if(prop.U){				//optional delay
 			let delay=prop.U-gui.ums();
 			delete prop.U;
@@ -478,9 +486,9 @@ gui.Item=class{
 		}
 	}
 	_refreshProp(propName,propValue){
+		//TODO: move this into try/catch
+			if(propName in this && propName!=='type')this[propName](propValue);
 		try{
-			if(propName in this)this[propName](propValue);
-			else this._default(propValue,propName);
 		}catch(e){
 			this._sendAction({'error':e.toString()});
 		}
@@ -489,7 +497,6 @@ gui.Item=class{
 		this._prop.v=v;
 		this.v(v);
 	}
-	_default(){}
 	_getIndex(){
 		var i=0,e=this._outterElement;
 		while((e=e.previousElementSibling)!==null)++i;
@@ -498,7 +505,7 @@ gui.Item=class{
 	_match(query){
 		if(query.constructor===String){
 			if((this._prop.id||'')===query)return true;
-			if(this._prop['cls']&&this._prop['cls'].indexOf(query)>-1)return true;
+			if(this._prop['tags']&&this._prop['tags'].indexOf(query)>-1)return true;
 		}else if(query.constructor===Object){
 			for(var q in query){
 				if(q==='id'){
@@ -508,21 +515,11 @@ gui.Item=class{
 						if(this._prop.id)return false;
 					}else if(query.id!==this._prop.id)
 						return false;
-				}else if(q==='cls'&&query.q){
-					if(this._prop['cls']&&this._prop['cls'].indexOf(query)>-1)return true;
-					return false;
 				}else if(q==='type'){
-					if(this.type==='text'){
-						if(query.type!=="")return false;
-					}else if(this.type==='number'){
-						if(query.type.constructor!==Number)return false;
-					}else if(this.type==='boolean'){
-						if(query.type.constructor!==Boolean)return false;
-					}else if(this.type==='container'){
-						if(query.type.constructor!==Array)return false;
-					}else if(query.type!==this.type){
-						return false;
-					}
+					return this.type===query[q];
+				}else if(this._prop[q]&&this._prop[q].constructor===Array){
+					// console.log(q,query,this._prop[q],
+					return this._prop[q].indexOf(query[q])>-1;
 				}else{
 					if(query[q]!==this._prop[q])return false;
 				}
@@ -560,148 +557,74 @@ gui.Item=class{
 //////////////////////////////////////////////////////////////////////////////
 // text items
 addCSS(`
-[type='text'] > .title:empty {width:0px;height:0px;overflow:hidden}
-[type='text'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
-[type='text'] > [v] {white-space:pre-wrap;}
+[type='txt'] > .title:empty {width:0px;height:0px;overflow:hidden}
+[type='txt'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+[type='txt'] > [v] {white-space:pre-wrap;}
 `);
-gui.Text=class extends gui.Item{}
-gui.Text.prototype.type='text';
+gui.Txt=class extends gui.Item{}
+gui.Txt.prototype.type='txt';
 //////////////////////////////////////////////////////////////////////////////
 // number items
 addCSS(`
-[type='number'] > .title:empty {width:0px;height:0px;overflow:hidden}
-[type='number'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);vertical-align:top;margin-top:inherit}
-[type='number'] > .title:not(empty):after {content:":"}
-[type='number'] > [v] {display:inline-block}
+[type='num'] > .title:empty {width:0px;height:0px;overflow:hidden}
+[type='num'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);vertical-align:top;margin-top:inherit}
+[type='num'] > .title:not(empty):after {content:":"}
+[type='num'] > [v] {display:inline-block}
 `);
-gui.Number=class extends gui.Item{
+gui.Num=class extends gui.Item{
 	_animatable(propName){return propName==='v' || gui.ANIMATABLE.has(propName)}
 }
-gui.Number.prototype.type='number';
+gui.Num.prototype.type='num';
 //////////////////////////////////////////////////////////////////////////////
 // boolean items
 addCSS(`
-[eB="1"] {cursor:pointer;user-select:none;}
-[eB="0"] {pointer-events:none;opacity:.5;contenteditable:false}
-[select]:active,[select][v="true"] {background-color:var(--colorTrue) !important;}
-[select="-1"],[select="0"] {text-align:center;display:inline-block;padding:.4em;color:var(--color1);border:1px solid rgba(0,0,0,0.2);background-color:var(--colorFalse);box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);cursor:pointer;vertical-align:middle;}
-[select="-1"]:not(:empty),[select="0"]:not(:empty) {min-width:100px;border-radius:4px;}
-[eB][select="-1"]:empty,[eB][select="0"]:empty {width:2em;height:2em;border-radius:2em;}
-[type="boolean"][select="1"],[type="boolean"][select="2"] {display:block;text-align:left}
-[type="boolean"][select="1"]:empty,[type="boolean"][select="2"]:empty {text-align:center}
-[type="boolean"][select="1"][v="false"]:before {content:"\\029be" " ";display:inline;}
-[type="boolean"][select="1"][v="true"]:before {content:"\\029bf" " ";display:inline;}
-[type="boolean"][select="2"][v="false"]:before {content:"\\2610" " ";display:inline;}
-[type="boolean"][select="2"][v="true"]:before {content:"\\2611" " ";display:inline;}
-[select="-1"]:not([eB]),[select="0"]:not([eB]){display:none}
-[type="container"][select="1"],[type="container"][select="2"] {box-shadow:2px 2px 2px -1px rgba(0,0,0,0.2)}
+[in="1"] {cursor:pointer;user-select:none;}
+[in="0"] {pointer-events:none;opacity:.5;contenteditable:false}
+[type='btn']:active {background-color:var(--colorTrue) !important;}
+[type='btn'] {text-align:center;display:inline-block;padding:.4em;color:var(--color1);border:1px solid rgba(0,0,0,0.2);background-color:var(--colorFalse);box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);cursor:pointer;vertical-align:middle;}
+[type='btn']:not(:empty),[select="0"]:not(:empty) {min-width:100px;border-radius:4px;}
+[type='btn'][in]:empty {width:1em;height:1em;border-radius:2em;}
+[btnContainer] [type='btn'] {display:none}
+[btnContainer]:active {background-color:var(--colorTrue) !important;}
+[btnContainer] {border:1px solid rgba(0,0,0,0.2);background-color:var(--colorFalse);box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);cursor:pointer;border-radius:4px;}
 `);
-gui.Boolean=class extends gui.Item{
+gui.Btn=class extends gui.Item{
 	_initContent(){
 		this._element=document.createElement('div');			//make element inside parent
 		this._content=this._element;
 		this._title=this._element;
 		this._parent._placeChildElement(this);
-		
+		this._bind(this);
 	}
+	_initDefaults(){this._defaults=Object.assign({in:1},this._parent._defaults);}
 	v(v){
-		if(this._attr('select')){
-			this._setAttrC('v',v);
-			if(this._parent._containerBoolean)this._parent._setAttr('v',v);
-			if(this._attr('select')=='-1'){
-				if(v){
-					var e=this;
-					e._prop.v=false;
-					setTimeout(function(){e._setAttrC('v',false);},200);
-				}
-			}else if(this._attr('select')=='1'){
-				var selectParent=this._parent;
-				while(selectParent._prop.select!==1 && selectParent!==gui.rootContainer)
-					selectParent=selectParent._parent;
-				if(selectParent._prop.select!==1)selectParent=this._parent;
-				if(v){
-					if(selectParent._selected && selectParent._selected!==this){
-						selectParent._selected._prop.v=false;
-						selectParent._selected._setAttrC('v',false);
-						if(selectParent._selected._parent._containerBoolean)
-							selectParent._selected._parent._setAttr('v',false);
-					}
-					selectParent._selected=this;
-				}else if(selectParent._selected===this){
-					selectParent._selected=false;
-				}
-			}
+		if(v){
+			var e=this;
+			e._prop.v=false;
+			setTimeout(function(){e._setAttrC('v',false);},200);
 		}
+	}
+	_bind(item){
+		var thisItem=this;
+		if(this._unbind)this._unbind();
+		item._element.onclick=function(){							//click behavior
+			thisItem._sendAction(true);
+		}
+		this._unbind=function(){item._element.onclick=null;}
 	}
 }
-gui.Boolean.prototype.type="boolean";
-gui.Boolean.prototype.eB=function(v){
-	v=(v==0||v==false)?0:1;
-	if(this._parent._containerBoolean){
-		this._parent._setAttr('eB',v);
-	}else{
-		this._setAttr('eB',v);
-	}
-};
-gui.Boolean.prototype.select=function(v){
-	if(String(v)!=this._attr('select')){ //if select prop value is changing...
-		this._setAttr('select',v);
-		if(this._parent._containerBoolean)
-			this._parent._setAttr('select',v);
-		var thisItem=this;
-		this.v=this.__proto__.v;
-		if(v===0){		//holddown button
-			this._bind=function(item){
-				if(thisItem._unbind)thisItem._unbind();
-				item._element.onmousedown=function(){						//onmousedown behavior
-					thisItem._value(true);
-					if(v===0)thisItem._sendAction(true);
-				}
-				item._element.onmouseup=function(){							//onmouseup behavior
-					thisItem._value(false);
-					thisItem._sendAction(v!==0);
-				}
-				thisItem._unbind=function(){item._element.onmousedown=item._element.onmouseup=null;}
-			}
-		}else if(v<0){	//click button
-			this._bind=function(item){
-				if(thisItem._unbind)thisItem._unbind();
-				item._element.onclick=function(){							//click behavior
-					thisItem._sendAction(true);
-				}
-				thisItem._unbind=function(){item._element.onclick=null;}
-			}
-		}else{			//select/checkbox/radio button
-			this._bind=function(item){
-				if(thisItem._unbind)thisItem._unbind();
-				item._element.onclick=function(){							//select/deselect behavior
-					if(thisItem._prop.v){
-						thisItem._sendAction(false);
-						thisItem._value(false);
-					}else{
-						thisItem._sendAction(true);
-						thisItem._value(true);
-					}
-				}
-				thisItem._unbind=function(){item._element.onclick=null;}
-			}
-		}
-		this._bind(this);
-		if('v' in this._prop)
-			this.v(this._prop.v);
-	}
-};
+gui.Btn.prototype.type='btn';
 //////////////////////////////////////////////////////////////////////////////
 // containers
 addCSS(`
-[type="container"] {display:grid;grid-template-rows: auto 1fr;}
-[type="container"] > .title:empty {width:0px;height:0px;overflow:hidden}
-[type="container"] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);}
-[type="container"] > [v] {display:block}
+[type='bin'] {display:grid;grid-template-rows: auto 1fr;}
+[type='bin'] > .title:empty {width:0px;height:0px;overflow:hidden}
+[type='bin'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);}
+[type='bin'] > [v] {display:block}
 `);
-gui.Container=class extends gui.Item{
-	_initContent(){
-		super._initContent();
+gui.Bin=class extends gui.Item{
+	_initDefaults(){
+		this._defaults=Object.assign({},this._parent._defaults);
 		this._childmap={};
 	}
 	*[Symbol.iterator](){
@@ -711,7 +634,6 @@ gui.Container=class extends gui.Item{
 			if(child)yield child;
 		}
 	}
-	_last(){for(var i of this)return i;}
 	_getChild(id){
 		if(typeof(id)==='number'){								//find child by order
 			var childElement=this._content.children[id];
@@ -726,7 +648,7 @@ gui.Container=class extends gui.Item{
 	_checkContainerBool(){
 		var boolItem;
 		for(var item of this){
-			if(item.type==='boolean')
+			if(item instanceof gui.Btn)
 				if(boolItem)return null;
 			else
 				boolItem=item;
@@ -737,8 +659,20 @@ gui.Container=class extends gui.Item{
 	_newChild(prop){
 		var type=gui.getType(prop);
 		if(!type){
-			type=gui.Container;
-			prop.v=[];
+			var defaultType=gui.getType(this._defaults);
+			if('v' in prop){
+				type=gui.defaultType(prop.v);
+				if(defaultType&&(defaultType.prototype instanceof type)){
+					type=defaultType;
+				}
+			}else if(defaultType){
+				type=defaultType;
+			}else if('v' in this._defaults){
+				type=gui.defaultType(this._defaults.v);
+			}else{
+				type=gui.Bin;
+				prop.v=[];
+			}
 		}
 		var child=new type(prop,this);
 		if(child._prop.id!==undefined)this._childmap[child._prop.id]=child;
@@ -747,33 +681,36 @@ gui.Container=class extends gui.Item{
 		if(prop.v===null){										//if value is null, remove child
 			this._removeChild(child,prop);
 		}else{
-			var propType=gui.getType(prop);
-			if(child._typeCheck(propType)){
+			var type=gui.getType(prop);
+			if(!type || child instanceof type){
 				child._update(prop);							//if value compatible, update child properties
 			}else if(child._parent){							//if value incompatible, replace child with new one
-				if(child._prop.id)prop.id=child._prop.id;		//correct id type in case prop.id was a number
-				var newchild=new propType(Object.assign({},child._prop,prop),this);
-				this._content.replaceChild(newchild._outterElement,child._outterElement);
-				if(child._prop.id)this._childmap[prop.id]=newchild;
+				this._changeChildType(child,propType,prop);
 			}else{
-				gui.sendAction(0,{error:'Root element must be a simple container.'});
+				gui.sendAction(0,{error:'Root element must be a container type.'});
 			}
 		}
+	}
+	_changeChildType(child,propType,prop){
+		if(child._prop.id)prop.id=child._prop.id;		//correct id type in case prop.id was a number
+		var newchild=new propType(Object.assign({},child._prop,prop),this);
+		this._content.replaceChild(newchild._outterElement,child._outterElement);
+		if(child._prop.id)this._childmap[prop.id]=newchild;
 	}
 	_removeChild(child){
 		if(child._prop.id)delete this._childmap[child._prop.id];
 		this._content.removeChild(child._outterElement);
 	}
 	_search(prop){
-		var recur=1;
-		if(prop.$.constructor===Object&&('recur' in prop.$)){
-			recur=prop.$.recur;
-			delete prop.$.recur;
+		var scope=1;
+		if(prop['*'].constructor===Object&&('scope' in prop['*'])){
+			scope=prop['*'].scope;
+			delete prop['*'].scope;
 		}
-		for(var child of this){
-			if(child._match(prop.$))
+		for(var child of (scope>1?gui.rootContainer:this)){
+			if(child._match(prop['*']))
 				this._processChild(child,Object.assign({},prop));
-			if(recur && (child instanceof gui.Container))
+			if(scope && (child instanceof gui.Bin))
 				child._search(prop);
 		}
 	}
@@ -788,13 +725,18 @@ gui.Container=class extends gui.Item{
 				delete gui.animations[prop.Q];
 			}
 		}
-		if('$' in prop){
+		if('*' in prop){
 			this._search(prop);
 		}else{
 			var child;
 			if('id' in prop){
 				if(prop.id.constructor===Array && prop.id.length){
-					if(prop.id.length===1){
+					if(prop.id[0]===null){
+						if(prop.id.length===1)delete prop.id;
+						else prop.id=prop.id.slice(1);
+						gui(prop);
+						return;
+					}else if(prop.id.length===1){
 						prop.id=prop.id[0];
 					}else{
 						var id=prop.id[0];
@@ -812,34 +754,26 @@ gui.Container=class extends gui.Item{
 			}
 		}
 	}
-	_default(propValue,propName){
-		for(var child of this){
-			if(!(propName in child._prop)){
-				child._refreshProp(propName,propValue);
-			}
-		}
-	}
 	v(updates){
 		//cycle through all updates for this container
 		for(var i of updates)this._processProp(gui.prop(i));
 		//after updates are done, check if there's an untitled boolean value (for a cleaner look&feel)
-		if(this._containerBoolean){
-			this._containerBoolean._unbind();
-		}
+		if(this._containerBoolean)
+			this._containerBoolean._bind(this._containerBoolean);
 		this._containerBoolean=this._checkContainerBool();
 		if(this._containerBoolean){
-			this._setAttr('eB',this._containerBoolean._attr('eB')||1);
-			this._setAttr('select',this._containerBoolean._attr('select'));
-			this._setAttr('v',this._containerBoolean._prop.v);
 			this._containerBoolean._bind(this);
-			this._containerBoolean._setAttr('eB',null);
+			// this._setAttr('eB',this._containerBoolean._attr('eB')||1);
+			this._setAttr('btnContainer',1);
+			this._setAttr('v',Boolean(this._containerBoolean._prop.v));
+			// this._containerBoolean._setAttr('eB',null);
 		}else{
-			this._setAttr('eB',null);
-			this._setAttr('select',null);
+			this._setAttr('btnContainer',null);
+			// this._setAttr('select',null);
 		}
 	}
 }
-gui.Container.prototype.type="container";
+gui.Bin.prototype.type='bin';
 //////////////////////////////////////////////////////////////////////////////
 
 //////////////////////////////////////////////////////////////////////////////
@@ -849,6 +783,7 @@ gui.Container.prototype.type="container";
 	//////////////////////////////////////////////////////////////////////////////
 	// init window and connect to task
 	function init(){
+		logToConsole();
 		//create foundational element
 		document.body._level=-2;
 		document.body._content=document.body;
@@ -856,12 +791,13 @@ gui.Container.prototype.type="container";
 			this._content.appendChild(child._element);
 			child._outterElement=child._element;
 		}
-		gui.rootOrigin=new gui.Container({},document.body);
+		gui.rootOrigin=new gui.Bin({},document.body);
 		gui.rootOrigin._removeChild=function(child){
 			gui.rootContainer._content.innerHTML='';
 			gui.rootContainer._childmap={};
+			gui.rootContainer._prop={select:-1,eB:1,task:gui.rootContainer._prop.task};
 		}
-		gui.rootContainer=new gui.Container({select:-1,eB:1},gui.rootOrigin);
+		gui.rootContainer=new gui.Bin({df:{su:'px'}},gui.rootOrigin);
 		gui.rootContainer._parent=null;
 		document.body._item=gui.rootContainer;
 		window._item=gui.rootContainer;
@@ -888,15 +824,13 @@ gui.Container.prototype.type="container";
 	function onTaskConnect(){
 		gui(null);
 		gui.startTime=(new Date()).getTime();
-		gui.sendAction(0,['onload']);
 		window.addEventListener('unload',function(){gui.sendAction(0,['onunload']);},false);
 	}
 	function connectToTaskScript(){
 		//	connect gui.action to task.userAction
 		if(task.userAction)gui.action = task.userAction;
-		//	connect task.updateUI to gui.update;
-		task.updateUI = gui;
-		task.ui=gui;
+		//	connect task.show to gui.update;
+		task.show=function(data){gui(JSON.parse(JSON.stringify(data)));};
 		//	define task.end
 		task.end=function(){};
 		//	start task
@@ -944,12 +878,13 @@ gui.Container.prototype.type="container";
 			xhttp.onreadystatechange = onReady;
 			if(gui.httpAppendToURL)url+=(url.indexOf('?')==-1?'?':'&')+gui.httpAppendToURL;
 			xhttp.open("GET",url, true);
-			if(gui.httpParrotHeader)xhttp.setRequestHeader('X-parrot',gui.httpParrotHeader);
+			// if(gui.httpParrotHeader)xhttp.setRequestHeader('X-parrot',gui.httpParrotHeader);
 			xhttp.send();
 		}
 		gui.action=function(time,id,val){
 			post(task.location,JSON.stringify([time,id,val]));
 		};
+		gui.action(0,null,['onload']);
 		onTaskConnect();
 	}
 	function connectToTaskWS(){
@@ -981,14 +916,13 @@ gui.Container.prototype.type="container";
 
 
 
-
 //
 // above this line are:
-//   core STAP text&button features, search ($), timing (QRSTU), and some button/radio/checkbox options (select,eB)
+//   core STAP text&button features, search & timing (_QRSTU)
 //////////////////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////
 // below this line are:
-//   additional UI features (e.g. tables, inputs, emphasized text)
+//   additional UI features (e.g. checkboxes, tables, inputs, events, graphics, emphases)
 //
 
 
@@ -997,8 +931,6 @@ gui.Container.prototype.type="container";
 
 //////////////////////////////////////////////////////////////////////////////
 // additional common options
-
-gui.Item.prototype._=function(v){if(v)gui(v,false);};
 
 gui.INFO={
 	async ip(){return gui.ip=await fetch('https://api.ipify.org/').then(r=>r.text());},
@@ -1061,8 +993,14 @@ gui.Item.prototype.P=function(v){
 
 gui.Item.prototype.O=function(v){
 	var update=v==1?this._onedit:this._prop[v];
-	if(update)
-		(this._parent||gui.rootOrigin)._processChild(this,update);
+	if(update){
+		if(update.id||update['*']){
+			if(this._processProp)this._processProp(update);
+			else (this._parent||gui.rootOrigin)._processProp(update);
+		}else{
+			(this._parent||gui.rootOrigin)._processChild(this,update);
+		}
+	}
 }
 
 gui.onEvent=function(e){
@@ -1155,17 +1093,56 @@ gui.Item.prototype._checkOverlap=function(){
 	}
 }
 
-gui.Text.prototype.onedit=function(v){
+gui.Btn.prototype.in=function(v){
+	//TODO: unbind and rebind (for the purposes of booldiv)
+	if(v==0||v==false){
+		this._setAttr('in',0);
+	}else{
+		this._setAttr('in',1);
+	}
+};
+
+gui.Item.prototype.onin=function(v){
 	if(v && v.constructor===Object)this._onedit=v;
 	else this._onedit=undefined;
 };
-gui.Number.prototype.onedit=gui.Text.prototype.onedit;
-gui.Boolean.prototype.onedit=gui.Text.prototype.onedit;
 
-gui.Text.prototype.patronym=function(v){this._patronym=v;}
-gui.Number.prototype.patronym=gui.Text.prototype.patronym;
-gui.Boolean.prototype.patronym=gui.Text.prototype.patronym;
-gui.Container.prototype.patronym=function(v){this._patronym=v;this._default(v,'patronym');}
+//TODO: this probly isn't necessary; could just use blank function
+gui.Item.prototype.patronym=function(v){this._patronym=v;};
+
+gui.Bin.prototype._default=function(propName,propVal){
+	if(propVal===null){
+		if(propName in this._parent._defaults)
+			propVal=this._defaults[propName]=this._parent._defaults[propName];
+		else
+			delete this._defaults[propName];
+	}else{
+		this._defaults[propName]=propVal;
+	}
+	for(var child of this){
+		if(!(propName in child._prop)){
+			if(propName==='type'){
+				if(propVal!==child.type){
+					var propType=gui.getType({type:propVal});
+					if(propType)
+						this._changeChildType(child,propType,{});
+					//TODO: check that child val is compatible with type
+				}
+			}else{
+				child._refreshProp(propName,propVal);
+			}
+		}
+		if(child.df && !(propName in child._defaults))
+			child._default(propName,propVal);
+	}
+}
+gui.Bin.prototype.df=function(v){
+	if(v===null){
+		v={};
+		for(var propName in this._defaults)v[propName]=null;
+	}
+	for(var propName in v)this._default(propName,v[propName]);
+}
 
 addCSS(`
 [emp="1"] {font-weight:bold}
@@ -1184,25 +1161,84 @@ gui.Item.prototype.emp2=function(v){this._setAttr('emp2',v)};
 
 gui.Item.prototype.opc=function(v){this._element.style.opacity=v;};
 
-gui.Item.prototype.bg=function(v){this._element.style.background=gui.color(v);};
+gui.Item.prototype.bg=function(v){
+	if(this._path){
+		this._path.setAttribute('fill',gui.color(this._prop.bg?this._prop.bg:(this._prop.bg===0?0:'none')));
+	}else{
+		this._element.style.background=gui.color(v);
+	}
+};
 
 gui.Item.prototype.c=function(v){this._element.style.color=gui.color(v);};
 
 gui.Item.prototype.fnt=function(v){this._element.style.font=v;};
 
-gui.Item.prototype.bd=function(v){this._element.style.borderStyle=v;};
+gui.Item.prototype.lc=function(v){
+	if(this._path)
+		this._path.setAttribute('stroke',gui.color(this._prop.lc?this._prop.lc:(this._prop.lc===0?0:1)));
+	else
+		this._element.style.borderColor=gui.color(v);
+};
 
-gui.Item.prototype.bdc=function(v){this._element.style.borderColor=gui.color(v);};
+gui.Item.prototype.lw=function(v){
+	if(this._path){
+		this._path.style.strokeWidth=this._getSize(v,{'%w':'%','%h':'%'})||0;
+	}else{
+		this._element.style.borderWidth=this._getSize(v,{'%':'%w'});
+	}
+};
 
-gui.Item.prototype.bdw=function(v){this._element.style.borderWidth=v;};
+// gui.Item.prototype.r=function(v){this._element.style.borderRadius=v+'px';};
+addCSS(`
+[shape] {text-align:center;}
+[shape="rect"],[shape="0"] {border-radius:0px  !important} 
+[shape="roundedRect"],[shape="2"] {border-radius:.4em  !important}
+[shape="round"],[shape="1"] {border-radius:100%  !important}
+[shape="roundTop"],[shape="6"] {border-radius:100% 100% 0px 0px  !important}
+[shape="roundBottom"],[shape="3"] {border-radius:0px 0px 100% 100%  !important}
+[shape="roundLeft"],[shape="4"] {border-radius:100% 0px 0px 100%  !important}
+[shape="roundRight"],[shape="5"] {border-radius:0px 100% 100% 0px  !important}
+svg {width:100%;height:100%;left:0px;top:0px;position:absolute;z-index:0 }
+`);
+//[shape="triangle"],[shape="3"] {clip-path: polygon(50% 0%, 0% 100%, 100% 100%);}
+gui.Item.prototype.shape=function(v){
+	this._setAttr('shape',v);
+	//for irregular shapes
+	//	need to remap borderWidth borderColor and background to stroke-width stroke and fill
+	if(v.constructor===Array){
+		this._element.style.background='';
+		this._element.style.borderWidth=0;
+		if(!this._svg){
+			this._svg=this._element.insertBefore(createSVG('svg'),this._title);
+			this._svg.setAttribute('viewBox','0 0 100 100');
+			this._svg.setAttribute('preserveAspectRatio','none');
+		}
+		if(!this._path){
+			this._path=this._svg.appendChild(createSVG('path'));
+		}
+		this._path.setAttribute('d',(isNaN(parseInt(v[0]))?'':'M')+v.join(' '));
+	// }else if(v==='triangle'||v===3){
+		// this._element.style.background='';
+		// this._element.style.borderWidth=0;
+		// this._svg=this._element.insertBefore(createSVG('svg'),this._title);
+		// this._svg.setAttribute('viewBox','0 0 100 100');
+		// this._svg.setAttribute('preserveAspectRatio','none');
+		// this._path=this._svg.appendChild(createSVG('polygon'));
+		// this._path.setAttribute('points','0 100,50 0,100 100');
+		// this._path.setAttribute('clip-path','polygon(0 100,50 0,100 100)');
+	}else if(this._svg){
+		this._element.removeChild(this._svg);
+		delete this._svg;
+		delete this._path;
+	}
+	this.bg(this._prop.bg);
+	this.lw(this._prop.lw);
+	this.lc(this._prop.lc);
+};
 
-gui.Item.prototype.pad=function(v){this._element.style.padding=v;};
+gui.Item.prototype.w=function(v,batch){this._element.style.width=this._getSize(v);if(!batch)this._moveHook();};
 
-gui.Item.prototype.r=function(v){this._element.style.borderRadius=v+'px';};
-
-gui.Item.prototype.w=function(v){this._element.style.width=v;this._moveHook();};
-
-gui.Item.prototype.h=function(v){this._element.style.height=v;this._moveHook();};
+gui.Item.prototype.h=function(v,batch){this._element.style.height=this._getSize(v);if(!batch)this._moveHook();};
 
 gui.Item.prototype.z=function(v){this._element.style.zIndex=10+v;};
 
@@ -1212,24 +1248,50 @@ addCSS(`
 [x],[y] {position:absolute;margin:0px}
 [childPos] > [v] {margin:0px;position:absolute;top:0px;left:0px;width:100%;height:100%;overflow:visible}
 `);
-gui.Container.prototype._hasPositionedElements=function(){	//enables Item.x and Item.y behavior
+gui.Bin.prototype._hasPositionedElements=function(){	//enables Item.x and Item.y behavior
 	for(var i of this)
 		if(getComputedStyle(i._element).position==='absolute')
 			return true;
 	return null;
 }
-gui.Item.prototype.x=function(v){
-	this._element.style.left=v;
+gui.Item.prototype.x=function(v,batch){
+	this._element.style.left=this._getSize(v);
 	this._setAttr('x',v);
 	this._parent._setAttr('childPos',this._parent._hasPositionedElements());
-	this._moveHook();
+	if(!batch)this._moveHook();
 };
-gui.Item.prototype.y=function(v){
-	this._element.style.top=v;
+gui.Item.prototype.y=function(v,batch){
+	this._element.style.top=this._getSize(v);
 	this._setAttr('y',v);
 	this._parent._setAttr('childPos',this._parent._hasPositionedElements());
+	if(!batch)this._moveHook();
+};
+
+gui.Item.prototype.su=function(v){
+	this._su=v;
+	for(var propName of gui.SIZEOPTIONS){
+		if(propName in this._prop)
+			this[propName](this._prop[propName],true);
+	}
 	this._moveHook();
 };
+
+gui.Item.prototype._getSize=function(v,convert){
+	var units;
+	if(v===undefined||v===null)v=0;
+	if(v.constructor===String){
+		units=v.match(/[a-zA-Z%]+/);
+		units=units?units[0]:this._su;
+		v=parseFloat(v);
+	}else{
+		units=this._su;
+	}
+	if(convert && (units in convert))units=convert[units];
+	//TODO: add hook so that w/h gets updated when w/h changes
+	if(units==='%w')return (v*this._element.offsetWidth/100)+'px';
+	if(units==='%h')return (v*this._element.offsetHeight/100)+'px';
+	return v+units;
+}
 
 //////////////////////////////////////////////////////////////////////////////
 
@@ -1237,17 +1299,18 @@ gui.Item.prototype.y=function(v){
 //////////////////////////////////////////////////////////////////////////////
 // additional text options
 addCSS(`
-[contenteditable=true] {background-color:white;min-width:100px;padding-left:5px;padding-right:5px;border:solid 1px lightgray;font-family:monospace;;pointer-events:all}
+[contenteditable=true] {background-color:white;min-width:100px;padding-left:5px;padding-right:5px;border:solid 1px lightgray;font-family:monospace;pointer-events:all}
 `);
-gui.Text.prototype.eT=function(v){
+gui.Txt.prototype.in=function(v){
 	var c=this._content;
 	c._removeListeners();
 	if(v>0){
 		c.setAttribute('contenteditable',true);
+		var multiline=this._content.innerText.indexOf('\n')+this._content.innerText.indexOf('\r')>-2;
 		c._listen('paste',function(e){
 			e.preventDefault();
 			var txt=e.clipboardData.getData("text/plain");
-			document.execCommand("insertText",false,(v&1)?txt.replace(/\n|\r/g,' '):txt);
+			document.execCommand("insertText",false,multiline?txt.replace(/\n|\r/g,' '):txt);
 		});
 		function send(){
 			if(c.innerText!=c._item._prop.v){
@@ -1255,30 +1318,40 @@ gui.Text.prototype.eT=function(v){
 				c._item._sendAction(c.innerText);
 			}
 		}
-		if(v==4){
-			c._listen('input',send);
-		}else if(v==3){
-			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault()}});
-			c._listen('input',send);
-		}else if(v==2){
-			c._listen('blur',send);
+		if(multiline){
+			if(v==2){
+				c._listen('input',send);
+			}else{
+				c._listen('blur',send);
+			}
 		}else{
-			c._listen('blur',send);
-			c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault();send();}});
+			if(v==2){//TODO: replace keypress with keydown? keyup?
+				c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault()}});
+				c._listen('input',send);
+			}else{
+				c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault();send();}});
+				c._listen('blur',send);
+			}
 		}
 	}else{
 		c.removeAttribute('contenteditable');
 	}
 };
+gui.Txt.prototype.v=function(v){
+	this._content.innerText=v;
+	var input=this._prop.in||this._parent._defaults.in;
+	if(input)this.in(input);
+}
+
 //////////////////////////////////////////////////////////////////////////////
 
 
 //////////////////////////////////////////////////////////////////////////////
 // additional number options
 addCSS(`
-[type='number'] > [unit]:after {content: attr(unit);}
+[type='num'] > [unit]:after {content: attr(unit);}
 `);
-gui.Number.prototype.eN=function(v){
+gui.Num.prototype.in=function(v){
 	var c=this._content;
 	c._removeListeners();
 	if(v>0){
@@ -1308,12 +1381,12 @@ gui.Number.prototype.eN=function(v){
 		c.removeAttribute('contenteditable');
 	}
 };
-gui.Number.prototype.unit=function(v){this._setAttrC('unit',v);};
-gui.Number.prototype.max=function(v){this._max=(v===null)?undefined:v;this.v(this._prop.v);};
-gui.Number.prototype.min=function(v){this._min=(v===null)?undefined:v;this.v(this._prop.v);};
-gui.Number.prototype.rnd=function(v){this._rnd=(v===null)?undefined:v;this.v(this._prop.v);};
-gui.Number.prototype.time=function(v){this._setAttr('time',v);this.v(this._prop.v);};
-gui.Number.prototype.v=function(v){
+gui.Num.prototype.unit=function(v){this._setAttrC('unit',v);};
+gui.Num.prototype.max=function(v){this._max=(v===null)?undefined:v;this.v(this._prop.v);};
+gui.Num.prototype.min=function(v){this._min=(v===null)?undefined:v;this.v(this._prop.v);};
+gui.Num.prototype.rnd=function(v){this._rnd=(v===null)?undefined:v;this.v(this._prop.v);};
+gui.Num.prototype.time=function(v){this._setAttr('time',v);this.v(this._prop.v);};
+gui.Num.prototype.v=function(v){
 	if(!v)v=0;
 	if(this._min!==undefined)v=Math.max(v,this._min);
 	if(this._max!==undefined)v=Math.min(v,this._max);
@@ -1326,20 +1399,101 @@ gui.Number.prototype.v=function(v){
 
 
 //////////////////////////////////////////////////////////////////////////////
+// holddown button
+addCSS(`
+[type='hold']:active {background-color:var(--colorTrue) !important;}
+[type='hold'] {text-align:center;display:inline-block;padding:.4em;color:var(--color1);border:1px solid rgba(0,0,0,0.2);background-color:var(--colorFalse);box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);cursor:pointer;vertical-align:middle;}
+[type='hold']:not(:empty),[select="0"]:not(:empty) {min-width:100px;border-radius:4px;}
+[type='hold'][in]:empty {width:2em;height:2em;border-radius:2em;}
+`)
+gui.Hold=class extends gui.Btn{
+	_bind(item){
+		var thisItem=this;
+		if(thisItem._unbind)thisItem._unbind();
+		item._element.onmousedown=function(){						//onmousedown behavior
+			thisItem._value(true);
+			thisItem._sendAction(true);
+		}
+		item._element.onmouseup=function(){							//onmouseup behavior
+			thisItem._value(false);
+			thisItem._sendAction(false);
+		}
+		thisItem._unbind=function(){item._element.onmousedown=item._element.onmouseup=null;}
+	}
+	v(v){
+		this._setAttrC('v',v);
+	}
+}
+gui.Hold.prototype.type='hold';
+
+
+//////////////////////////////////////////////////////////////////////////////
+// selectable options (checkboxes/radiobuttons)
+addCSS(`
+[type='select'] {display:block;text-align:left}
+[type='select']:empty {text-align:center}
+[v="true"] {background-color:var(--colorTrue) !important;}
+[type='select']:not([v="true"]):before {content:"\\2610" " ";display:inline;}
+[type='select'][v="true"]:before {content:"\\2611" " ";display:inline;}
+[type='select'][group]:not([v="true"]):before {content:"\\029be" " ";display:inline;}
+[type='select'][group][v="true"]:before {content:"\\029bf" " ";display:inline;}
+`)
+gui.Select=class extends gui.Btn{
+	_bind(item){
+		var thisItem=this;
+		if(thisItem._unbind)thisItem._unbind();
+		item._element.onclick=function(){							//select/deselect behavior
+			if(thisItem._prop.v){
+				thisItem._sendAction(false);
+				thisItem._value(false);
+				item._setAttrC("v","false");
+			}else{
+				thisItem._sendAction(true);
+				thisItem._value(true);
+				item._setAttrC("v","true");
+			}
+		}
+		thisItem._unbind=function(){item._element.onclick=null;}
+	}
+	v(v){
+		this._setAttrC('v',v);
+		var group=this._attr('group');
+		if(group){
+			if(v){
+				if(gui.selectGroups[group] && gui.selectGroups[group]!==this){
+					gui.selectGroups[group]._prop.v=false;
+					gui.selectGroups[group]._setAttrC('v',false);
+					if(gui.selectGroups[group]._parent._containerBoolean)
+						gui.selectGroups[group]._parent._setAttr('v',false);
+						//TODO: make sure this isn't just for immediate parent
+				}
+				gui.selectGroups[group]=this;
+			}else if(gui.selectGroups[group]===this){
+				gui.selectGroups[group]=undefined;
+			}
+		}
+	}
+	group(v){
+		this._setAttr('group',v);
+	}
+}
+gui.Select.prototype.type='select';
+gui.selectGroups={};
+
+//////////////////////////////////////////////////////////////////////////////
 // html
 addCSS(`
 [type='html'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
 [type='html'] > [v] {white-space:normal;}
 `);
-gui.Html=class extends gui.Text{
+gui.Html=class extends gui.Txt{
 	v(v){this._content.innerHTML=v;}
-	_typeCheck(type){return (!type)||(type===this.constructor)||(type===gui.Text);}
 }
 gui.Html.prototype.type='html';
 gui.Html.prototype.eT=function(v){
 	if(v>0){
 		this._content.innerText=this._prop.v;
-		gui.Text.prototype.eT.call(this,v);
+		gui.Txt.prototype.eT.call(this,v);
 	}else if(this._attrC('contenteditable')){
 		this._content.removeAttribute('contenteditable');
 		this._content.innerHTML=this._prop.v;
@@ -1360,7 +1514,7 @@ gui.Mkdn.prototype.type='mkdn';
 gui.Mkdn.prototype.eT=function(v){
 	if(v>0){
 		this._content.innerText=this._prop.v;
-		gui.Text.prototype.eT.call(this,v);
+		gui.Txt.prototype.eT.call(this,v);
 	}else if(this._attrC('contenteditable')){
 		this._content.removeAttribute('contenteditable');
 		this._content.innerHTML=gui.markdown(this._prop.v);
@@ -1377,11 +1531,11 @@ addCSS(`
 [type='popup'] > * > .title:empty {width:0px;height:0px;overflow:hidden}
 [type='popup'] > * > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
 `);
-gui.Popup=class extends gui.Container{
+gui.Popup=class extends gui.Bin{
 	_initContent(){
 		this._element=document.createElement('div'); //screen
 		this._frame=this._element.appendChild(document.createElement('div')); //popup window
-		this._title=this._frame.appendChild(document.createElement('span'));
+		this._title=this._frame.appendChild(document.createElement('div'));
 		this._content=this._frame.appendChild(document.createElement('div'));
 		this._content.style.overflow='auto';
 		this._parent._placeChildElement(this);
@@ -1400,11 +1554,12 @@ addCSS(`
 [type="table"] > div {overflow:auto;flex:1 1 auto}
 table {border-spacing:0;border-collapse:collapse;}
 table[head="1"] > tr:first-child > * {font-weight:bold;background:var(--colorHead);z-index:1;position:relative}
+td.title:empty {display:table-cell}
 `);
-gui.Table=class extends gui.Container{
+gui.Table=class extends gui.Bin{
 	_initContent(){
 		this._element=document.createElement('div');
-		this._title=this._element.appendChild(document.createElement('span'));
+		this._title=this._element.appendChild(document.createElement('div'));
 		this._frame=this._element.appendChild(document.createElement('div'));
 		this._frame.style.overflow='auto';
 		this._content=this._frame.appendChild(document.createElement('table'));
@@ -1414,18 +1569,28 @@ gui.Table=class extends gui.Container{
 	_newChild(prop){
 		var type=gui.getType(prop);
 		if(!type){
-			type=gui.Container;
-			prop.v=[];
+			var defaultType=gui.getType(this._defaults);
+			if('v' in prop){
+				type=gui.defaultType(prop.v);
+				if(defaultType&&(type.prototype instanceof defaultType))
+					type=defaultType;
+			}else if(defaultType){
+				type=defaultType;
+			}else if('v' in this._defaults){
+				type=gui.defaultType(this._defaults.v);
+			}else{
+				type=gui.Bin;
+				prop.v=[];
+			}
 		}
-		if(type==gui.Container){
+		if(type==gui.Bin){
 			var child=new gui.TableRow(prop,this);
 			if(typeof(prop.id)!=='number')this._childmap[prop.id]=child;
 		}
 	}
-	_typeCheck(type){return (!type)||(type===this.constructor)||(type===gui.Container);}
 }
 gui.Table.prototype.type='table';
-gui.TableRow=class extends gui.Container{
+gui.TableRow=class extends gui.Bin{
 	_initContent(){
 		this._element=document.createElement('tr');				//e.v is a sub-element where content is displayed
 		this._title=this._element.appendChild(document.createElement('td'));
@@ -1438,7 +1603,6 @@ gui.TableRow=class extends gui.Container{
 		td.appendChild(child._element);
 		child._outterElement=td;
 	}
-	_typeCheck(type){return (!type)||(type===this.constructor)||(type===gui.Container);}
 }
 gui.TableRow.prototype.type='tableRow';
 gui.Table.prototype._floatRow=function(e){
@@ -1460,35 +1624,97 @@ gui.Table.prototype.head=function(v){
 
 
 //////////////////////////////////////////////////////////////////////////////
-// path
+// ln (link between items)
 addCSS(`
-.path.content {height:100px;}
-[type="path"] {width:100px;height:100px;}
-[type="path"] [v] {position:absolute;left:0px;top:0px;width:100%;height:100%;margin-left:0px;margin-top:0px}
+[type="ln"] > [v] > * {margin-bottom:1em;}
+[type="ln"] div:empty {width:0px;height:0px;margin:0px}
+svg {width:100%;height:100%;left:0px;top:0px;position:absolute;z-index:0}
 `);
-var SVGNS="http://www.w3.org/2000/svg";
-gui.Path=class extends gui.Item{
-	_initContent(){
-		this._element=document.createElement('div');
-		this._title=this._element.appendChild(document.createElement('span'));
-		this._content=this._element.appendChild(document.createElementNS(SVGNS,'svg'));
-		this._content.setAttribute('viewBox','0 0 100 100');
-		this._content.setAttribute('preserveAspectRatio','none');
-		this._path=this._content.appendChild(document.createElementNS(SVGNS,'path'));
-		this._path.setAttribute('stroke-width',1);
-		this._path.setAttribute('stroke','black');
-		this._path.setAttribute('fill','none');
-		this._parent._placeChildElement(this);
+gui.getMarker=function(type,color){
+	var id;
+	if(type==='arrow' || type==='dot'){
+		id='marker.'+type+'.'+color;
+		if(!document.getElementById(id)){
+			var d;
+			if(!gui.svgdefs){
+				gui.svgdefs=document.body.appendChild(createSVG('svg')).appendChild(createSVG('defs'));
+				gui.svgdefs.parentElement.style.height='0px';
+			}
+			var m=gui.svgdefs.appendChild(createSVG('marker'));
+			m.id=id;
+			m.setAttribute('orient','auto-start-reverse');
+			m.setAttribute('markerUnits','strokeWidth');
+			if(type==='arrow'){
+				m.setAttribute('viewBox','0 0 10 10');
+				m.setAttribute('refX','9');
+				m.setAttribute('refY','5');
+				m.setAttribute('markerWidth','6');
+				m.setAttribute('markerHeight','4');
+				d=m.appendChild(createSVG('path'));
+				d.setAttribute('d',"M 0 0 L 10 5 L 0 10 z");
+			}else{
+				m.setAttribute('refX','2');
+				m.setAttribute('refY','2');
+				m.setAttribute('markerWidth','5');
+				m.setAttribute('markerHeight','5');
+				d=m.appendChild(createSVG('circle'));
+				d.setAttribute('cx','2');
+				d.setAttribute('cy','2');
+				d.setAttribute('r','1.1');
+			}
+			d.setAttribute('fill',gui.color(color));
+		}
+		id='url(#'+id+')';
 	}
-	_typeCheck(type){return (!type)||(type===this.constructor)||(type===gui.Container)||(type===gui.Text);}
+	return id;
+}
+gui.Ln=class extends gui.Bin{
+	_initContent(){
+		super._initContent();
+		this._svg=this._content.appendChild(createSVG('svg'));
+		this._path=this._svg.appendChild(createSVG('path'));
+		this._path.setAttribute('fill','none');
+		this._path.setAttribute('stroke','var(--color1)');
+		this._path.setAttribute('stroke-width','1');
+	}
+	_drawPath(){
+		if(!this._prop.lw)this._prop.lw=1;
+		if(!this._prop.lc)this._prop.lc=1;
+		var d='';
+		for(var e of this._content.children){
+			if(e._item){
+				if(e.offsetHeight){
+					if(d)d+=(e.offsetLeft+e.offsetWidth/2)+','+e.offsetTop+' ';
+					if(e.nextElementSibling)d+='M'+(e.offsetLeft+e.offsetWidth/2)+','+(e.offsetTop+e.offsetHeight)+' ';
+				}else{
+					if(!d)d='M';
+					d+=e.offsetLeft+','+e.offsetTop+' ';
+				}
+			}
+		}
+		this._path.setAttribute('d',d);
+	}
 	v(v){
-		var d=this._path.getAttribute('d');
-		this._path.setAttribute('d',(d?(d+' '):'M')+v.join(' '));
+		super.v(v);
+		this._drawPath();
 	}
 }
-gui.Path.prototype.type='path';
-gui.Path.prototype.c=function(v){this._path.setAttribute('stroke',gui.color(v));};
-gui.Path.prototype.f=function(v){this._path.setAttribute('fill',v===null?'None':gui.color(v));};
-gui.Path.prototype.thk=function(v){this._path.setAttribute('stroke-width',v===null?1:v);};
+gui.Ln.prototype.type='ln';
+gui.Ln.prototype.shape=function(){}
+gui.Ln.prototype.dir=function(v){
+	if(v==1){
+		this._path.setAttribute('marker-start',gui.getMarker('dot',this._prop.lc));
+		this._path.setAttribute('marker-mid',gui.getMarker('arrow',this._prop.lc));
+		this._path.setAttribute('marker-end',gui.getMarker('arrow',this._prop.lc));
+	}else if(v==2){
+		this._path.setAttribute('marker-start',gui.getMarker('arrow',this._prop.lc));
+		this._path.setAttribute('marker-mid',gui.getMarker('dot',this._prop.lc));
+		this._path.setAttribute('marker-end',gui.getMarker('arrow',this._prop.lc));
+	}else{
+		this._path.removeAttribute('marker-start');
+		this._path.removeAttribute('marker-mid');
+		this._path.removeAttribute('marker-end');
+	}
+}
 //////////////////////////////////////////////////////////////////////////////
 
