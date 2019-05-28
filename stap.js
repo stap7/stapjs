@@ -1,10 +1,10 @@
-/*base html5 template for STAP visualization (STAP spec v7.16.201811121)
+/*base html5 template for STAP visualization (STAP spec v7.16.20190526)
 
 	What is STAP? 
 		http://stap7.github.io/
 
 
-	Are all optional UI component types and properties from the STAPv7.11 spec implemented in stapjs?
+	Are all optional UI component types and properties from the STAPv7.16 spec implemented in stapjs?
 		Not yet.
 			The STAP API does not require for all features to be implemented on user-agent software.
 			Any features that are required by task-side software (declared via the "require" command)
@@ -356,19 +356,21 @@ addCSS(`
 --colorBorder: #e8e8e8;
 --colorFalse: #f8f8f8;
 --colorTrue: lightblue;
+--colorLink: #0066ff;
 --color1: #444444;
 --color2: #0099ff;
 --color3: #ff9900;
 --color4: #99ff99;
 --color5: red;
 --color6: green;
---color7: blue;
+--color7: #ffaaaa;
 }
 body {background-color:var(--color0);color:var(--color1);font-size:18pt;}
 [level="-1"],[level="0"],[level="-1"]>*,[level="0"]>* {margin:0px;padding:0px;width:100%;height:100%;}
 [level] {border:solid 0px var(--color1)}
 div {position:relative;box-sizing:border-box;font-size:96%;flex:0 0 auto;flex-direction:column;margin:3px;}
 .title:not(empty):not(td) {white-space:nowrap;}
+.title:empty {margin:0px;}
 [v] {overflow:auto}
 `);
 gui.Item=class{
@@ -1244,10 +1246,12 @@ gui.Item.prototype.z=function(v){this._element.style.zIndex=10+v;};
 
 gui.Item.prototype.rot=function(v){this._element.style.setProperty('transform','rotate('+v+'deg)');};
 
+
+//[childPos] > [v] {margin:0px;overflow:hidden}
 addCSS(`
 [x],[y] {position:absolute;margin:0px}
 [childPos] > [v] {margin:0px;position:absolute;top:0px;left:0px;width:100%;height:100%;overflow:visible}
-`);
+`); //TODO: childPos overflow may compete with scroll/scrollH functionality
 gui.Bin.prototype._hasPositionedElements=function(){	//enables Item.x and Item.y behavior
 	for(var i of this)
 		if(getComputedStyle(i._element).position==='absolute')
@@ -1325,7 +1329,7 @@ gui.Txt.prototype.in=function(v){
 				c._listen('blur',send);
 			}
 		}else{
-			if(v==2){//TODO: replace keypress with keydown? keyup?
+			if(v==2){//TODO: keypress is deprecated? replace keypress with keydown? keyup?
 				c._listen('keypress',(e)=>{if(e.keyCode==13){e.preventDefault()}});
 				c._listen('input',send);
 			}else{
@@ -1465,7 +1469,6 @@ gui.Select=class extends gui.Btn{
 					gui.selectGroups[group]._setAttrC('v',false);
 					if(gui.selectGroups[group]._parent._containerBoolean)
 						gui.selectGroups[group]._parent._setAttr('v',false);
-						//TODO: make sure this isn't just for immediate parent
 				}
 				gui.selectGroups[group]=this;
 			}else if(gui.selectGroups[group]===this){
@@ -1499,6 +1502,24 @@ gui.Html.prototype.eT=function(v){
 		this._content.innerHTML=this._prop.v;
 	}
 };
+//////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////////////
+// url
+addCSS(`
+[type='url'] {cursor:pointer;color:var(--colorLink)}
+[type='url'] > .title:not(empty) {border-bottom:solid 1px var(--colorLink);width:25%;}
+[type='url'] > [v] {white-space:normal;}
+`);
+gui.Url=class extends gui.Txt{
+	v(v){
+		this._outterElement.onclick=()=>open(v);
+		this.title();
+	}
+	title(v){this._title.innerText=(v===null||v===undefined)?(this._prop.id?this._prop.id:this._prop.v):v;}
+}
+gui.Url.prototype.type='url';
 //////////////////////////////////////////////////////////////////////////////
 
 
@@ -1683,7 +1704,7 @@ gui.Ln=class extends gui.Bin{
 		var d='';
 		for(var e of this._content.children){
 			if(e._item){
-				if(e.offsetHeight){
+				if(e.offsetHeight>2){
 					if(d)d+=(e.offsetLeft+e.offsetWidth/2)+','+e.offsetTop+' ';
 					if(e.nextElementSibling)d+='M'+(e.offsetLeft+e.offsetWidth/2)+','+(e.offsetTop+e.offsetHeight)+' ';
 				}else{
@@ -1717,4 +1738,7 @@ gui.Ln.prototype.dir=function(v){
 	}
 }
 //////////////////////////////////////////////////////////////////////////////
+
+
+
 
