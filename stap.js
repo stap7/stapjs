@@ -808,7 +808,7 @@ gui.Bin.prototype.type='bin';
 		gui.rootContainer.agent=gui.agent;
 		gui.rootContainer.template=gui.template;
 		//connect to task
-		if(task.userAction){
+		if(task.userAction || task.start){
 			//if task code is client-side script...
 			connectToTaskScript();
 		}else if(task.location || location.params.l){
