@@ -17,7 +17,7 @@ More details on STAP may be found at https://github.com/stap7/stap
 
 stapjs is a javascript library for interpreting STAP messages and displaying them in a web-browser.
 
-Sample tasks that employ stapjs may be found at https://github.com/stap7/stap/tree/master/tasks
+Sample tasks that employ stapjs may be found at https://github.com/stap7/stap/tree/master/tasks/js
 
 
 ## If you are referencing stapjs from your webpage, you can use jsdelivr CDN:
