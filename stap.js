@@ -1,6 +1,6 @@
-/*base html5 template for STAP visualization (STAP spec v7.16.20190526)
+/*base html5 template for STAP visualization (STAP spec v7.17)
 
-	What is STAP? 
+	What is STAP?
 		http://stap7.github.io/
 
 
@@ -51,13 +51,15 @@ function load(urls, callback, onerror, type){
 	if(urls.length)onload=function(){load(urls,callback,onerror,type);};
 	else onload=callback||function(){};
 	if(url && (url.endsWith(".js")||type==='js')){       //if filename is a external JavaScript file
-		if(!urlInDocument('script','src',url)){
+		if(urlInDocument('script','src',url))onload();
+		else{
 			fileref=document.createElement('script');
 			fileref.setAttribute("type","text/javascript");
 			fileref.setAttribute("src", url);
 		}
 	}else if(url && (url.endsWith(".css")||type==='css')){ //if filename is an external CSS file
-		if(!urlInDocument('link','href',url)){
+		if(urlInDocument('link','href',url))onload();
+		else{
 			fileref=document.createElement("link");
 			fileref.setAttribute("rel", "stylesheet");
 			fileref.setAttribute("type", "text/css");
@@ -66,7 +68,7 @@ function load(urls, callback, onerror, type){
 	}else{
 		try{eval(url);}
 		catch(e){
-			console.warn('Not sure how to handle '+url+'.\nWill try to add as <style>...');
+			console.warn('Adding as a style-sheet:\n'+url);
 			addCSS(url);
 		}
 		onload();
@@ -167,7 +169,7 @@ function gui(data,log=true){
 	data=Object.assign({},gui.prop(data));
 	if('id' in data && data.id.constructor===Array){
 		data.id.unshift(0);
-	}else{
+	}else if(!('*' in data || '_' in data)){
 		data.id=0;
 	}
 	gui.rootOrigin._processProp(data);
@@ -185,7 +187,7 @@ gui.REQUIRED={
 	ease:"https://cdnjs.cloudflare.com/ajax/libs/gsap/2.0.1/easing/EasePack.min.js",
 	Mkdn:["https://cdn.jsdelivr.net/npm/marked/marked.min.js","gui.markdown=marked;"]
 };
-gui.OPTIONS=new Set(['*','O','P','Q','R','S','T','U','ease','easeout']);
+gui.OPTIONS=new Set(['_','*','O','P','Q','R','S','T','U','ease','easeout']);
 gui.OPTION_VALUES_IMPLEMENTED={
 	select:v=>[-1,0,1,2].indexOf(v)!==-1,
 	ease:v=>(v in gui.EASE)
@@ -369,6 +371,9 @@ body {background-color:var(--color0);color:var(--color1);font-size:18pt;}
 [level="-1"],[level="0"],[level="-1"]>*,[level="0"]>* {margin:0px;padding:0px;width:100%;height:100%;}
 [level] {border:solid 0px var(--color1)}
 div {position:relative;box-sizing:border-box;font-size:96%;flex:0 0 auto;flex-direction:column;margin:3px;}
+table {font-size:96%}
+tr {font-size:96%}
+td {font-size:96%}
 .title:not(empty):not(td) {white-space:nowrap;}
 .title:empty {margin:0px;}
 [v] {overflow:auto}
@@ -396,11 +401,11 @@ gui.Item=class{
 	}
 	_initContent(){
 		this._element=document.createElement('div');										//make element
+		this._frame=this._element;
 		this._title=this._element.appendChild(document.createElement('div'));
 		this._content=this._element.appendChild(document.createElement('div'));				//e.v is a sub-element where content is displayed
 		this._parent._placeChildElement(this);
 	}
-	// _initDefaults(){this._defaults=Object.assign({},this._parent._defaults);}
 	_initDefaults(){}
 	_attr(attr){return this._element.getAttribute(attr);}
 	_setAttr(attr,val){
@@ -440,7 +445,7 @@ gui.Item=class{
 				delete prop.ease;
 				delete prop.easeout;
 			}
-			//set up animation 
+			//set up animation
 			aniopt.onUpdate=function(prop){
 				if(document.body.contains(e._element))e._update(prop);
 				else ani.ani.kill();
@@ -469,15 +474,15 @@ gui.Item=class{
 		if('Q' in prop)gui.queue[prop.Q]=timeoutId;
 	}
 	_update(prop){
-		if(prop.U){				//optional delay
+		if(prop.U){				//delay Until
 			let delay=prop.U-gui.ums();
 			delete prop.U;
 			this._delay(prop,delay);
-		}else if(prop.T){		//optional delay
+		}else if(prop.T){		//Timed wait
 			let delay=prop.T*1000;
 			delete prop.T;
 			this._delay(prop,delay);
-		}else if(prop.S){
+		}else if(prop.S){		//Seconds to animate changes
 			this._animate(prop);
 		}else{
 			Object.assign(this._prop,prop);
@@ -501,27 +506,33 @@ gui.Item=class{
 	}
 	_getIndex(){
 		var i=0,e=this._outterElement;
-		while((e=e.previousElementSibling)!==null)++i;
+		while((e=e.previousElementSibling)!==null)
+			if(e._item)++i;
 		return i;
 	}
 	_match(query){
-		if(query.constructor===String){
-			if((this._prop.id||'')===query)return true;
+		if(query===null || query.constructor===String){
+			if(this._prop.id===query)return true;
 			if(this._prop['tags']&&this._prop['tags'].indexOf(query)>-1)return true;
 		}else if(query.constructor===Object){
 			for(var q in query){
 				if(q==='id'){
 					if(query.id.constructor===Number){
 						if(this._getIndex()!==query.id)return false;
+					}else if(query.id.constructor===Array){
+						if(query.id.length>this._level)return false;
+						var qid=[...query.id];
+						var qidmy=qid.pop();
+						if(!this._match({id:qidmy}) || (qid.length && !this._parent._match({id:qid})))
+							return false;
 					}else if(!query.id){
 						if(this._prop.id)return false;
 					}else if(query.id!==this._prop.id)
 						return false;
 				}else if(q==='type'){
-					return this.type===query[q];
+					if(this.type!==query[q])return false;
 				}else if(this._prop[q]&&this._prop[q].constructor===Array){
-					// console.log(q,query,this._prop[q],
-					return this._prop[q].indexOf(query[q])>-1;
+					if(this._prop[q].indexOf(query[q])==-1)return false;
 				}else{
 					if(query[q]!==this._prop[q])return false;
 				}
@@ -562,12 +573,15 @@ addCSS(`
 [type='txt'] > .title:empty {width:0px;height:0px;overflow:hidden}
 [type='txt'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
 [type='txt'] > [v] {white-space:pre-wrap;}
+[type='txt'][id] > [v] {margin-left:.5em}
+[type='txt'][title] > [v] {margin-left:.5em}
 `);
 gui.Txt=class extends gui.Item{}
 gui.Txt.prototype.type='txt';
 //////////////////////////////////////////////////////////////////////////////
 // number items
 addCSS(`
+[type='num'] {display:flex;flex-direction:row}
 [type='num'] > .title:empty {width:0px;height:0px;overflow:hidden}
 [type='num'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);vertical-align:top;margin-top:inherit}
 [type='num'] > .title:not(empty):after {content:":"}
@@ -583,7 +597,7 @@ addCSS(`
 [in="1"] {cursor:pointer;user-select:none;}
 [in="0"] {pointer-events:none;opacity:.5;contenteditable:false}
 [type='btn']:active {background-color:var(--colorTrue) !important;}
-[type='btn'] {text-align:center;display:inline-block;padding:.4em;color:var(--color1);border:1px solid rgba(0,0,0,0.2);background-color:var(--colorFalse);box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);cursor:pointer;vertical-align:middle;}
+[type='btn'] {text-align:center;display:inline-block;padding:.4em;color:var(--color1);border:1px solid rgba(0,0,0,0.2);background-color:var(--colorFalse);box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);vertical-align:middle;}
 [type='btn']:not(:empty),[select="0"]:not(:empty) {min-width:100px;border-radius:4px;}
 [type='btn'][in]:empty {width:1em;height:1em;border-radius:2em;}
 [btnContainer] [type='btn'] {display:none}
@@ -593,12 +607,16 @@ addCSS(`
 gui.Btn=class extends gui.Item{
 	_initContent(){
 		this._element=document.createElement('div');			//make element inside parent
+		this._frame=this._element;
 		this._content=this._element;
 		this._title=this._element;
 		this._parent._placeChildElement(this);
 		this._bind(this);
 	}
-	_initDefaults(){this._defaults=Object.assign({in:1},this._parent._defaults);}
+	_initDefaults(){
+		this._prop.in=1;
+		this._refreshProp('in',1);
+	}
 	v(v){
 		if(v){
 			var e=this;
@@ -638,8 +656,11 @@ gui.Bin=class extends gui.Item{
 	}
 	_getChild(id){
 		if(typeof(id)==='number'){								//find child by order
-			var childElement=this._content.children[id];
-			if(childElement)return childElement._item;
+			for(var i=0,eid=0;i<this._content.children.length;i++)
+				if(this._content.children[i]._item){
+					if(eid==id)return this._content.children[i]._item;
+					eid++;
+				}
 		}else if(typeof(id)==='string')							//find child by id
 			return this._childmap[id];
 	}
@@ -687,7 +708,7 @@ gui.Bin=class extends gui.Item{
 			if(!type || child instanceof type){
 				child._update(prop);							//if value compatible, update child properties
 			}else if(child._parent){							//if value incompatible, replace child with new one
-				this._changeChildType(child,propType,prop);
+				this._changeChildType(child,type,prop);
 			}else{
 				gui.sendAction(0,{error:'Root element must be a container type.'});
 			}
@@ -701,19 +722,29 @@ gui.Bin=class extends gui.Item{
 	}
 	_removeChild(child){
 		if(child._prop.id)delete this._childmap[child._prop.id];
+		if(child._prop.keys)
+			for(var key of child._prop.keys)
+				delete gui.btnkeys[key];
 		this._content.removeChild(child._outterElement);
 	}
-	_search(prop){
-		var scope=1;
-		if(prop['*'].constructor===Object&&('scope' in prop['*'])){
+	_search(prop,oneanddone=0){
+		var scope=oneanddone;
+		if(oneanddone)oneanddone=1;
+		if(prop['*'] && prop['*'].constructor===Object && ('scope' in prop['*'])){
 			scope=prop['*'].scope;
 			delete prop['*'].scope;
+		}else if(prop['*'] && prop['*'].constructor===Array){
+			prop['*']={id:prop['*']};
 		}
-		for(var child of (scope>1?gui.rootContainer:this)){
-			if(child._match(prop['*']))
-				this._processChild(child,Object.assign({},prop));
+		var searchContainer=scope>1?gui.rootOrigin:this;
+		for(var child of searchContainer){
+			if(child._match(prop['*'])){
+				searchContainer._processChild(child,Object.assign({},prop));
+				if(oneanddone)return 1;
+			}
 			if(scope && (child instanceof gui.Bin))
-				child._search(prop);
+				if(child._search(prop,oneanddone))
+					return 1;
 		}
 	}
 	_processProp(prop){
@@ -727,25 +758,15 @@ gui.Bin=class extends gui.Item{
 				delete gui.animations[prop.Q];
 			}
 		}
-		if('*' in prop){
+		if('_' in prop){
+			prop['*']=prop._;
+			delete prop._;
+			this._search(prop,2);
+		}else if('*' in prop){
 			this._search(prop);
 		}else{
 			var child;
 			if('id' in prop){
-				if(prop.id.constructor===Array && prop.id.length){
-					if(prop.id[0]===null){
-						if(prop.id.length===1)delete prop.id;
-						else prop.id=prop.id.slice(1);
-						gui(prop);
-						return;
-					}else if(prop.id.length===1){
-						prop.id=prop.id[0];
-					}else{
-						var id=prop.id[0];
-						prop.id=prop.id.slice(1);
-						prop={v:[prop],id:id};
-					}
-				}
 				child=this._getChild(prop.id);
 				if(prop.id.constructor===Number)delete prop.id;
 			}
@@ -757,6 +778,11 @@ gui.Bin=class extends gui.Item{
 		}
 	}
 	v(updates){
+		//clear bin if updates==[]
+		if(updates[0]===null){
+			for(var i of this)this._removeChild(i);
+			updates.shift();
+		}
 		//cycle through all updates for this container
 		for(var i of updates)this._processProp(gui.prop(i));
 		//after updates are done, check if there's an untitled boolean value (for a cleaner look&feel)
@@ -765,13 +791,10 @@ gui.Bin=class extends gui.Item{
 		this._containerBoolean=this._checkContainerBool();
 		if(this._containerBoolean){
 			this._containerBoolean._bind(this);
-			// this._setAttr('eB',this._containerBoolean._attr('eB')||1);
 			this._setAttr('btnContainer',1);
 			this._setAttr('v',Boolean(this._containerBoolean._prop.v));
-			// this._containerBoolean._setAttr('eB',null);
 		}else{
 			this._setAttr('btnContainer',null);
-			// this._setAttr('select',null);
 		}
 	}
 }
@@ -785,7 +808,7 @@ gui.Bin.prototype.type='bin';
 	//////////////////////////////////////////////////////////////////////////////
 	// init window and connect to task
 	function init(){
-		logToConsole();
+		// logToConsole();
 		//create foundational element
 		document.body._level=-2;
 		document.body._content=document.body;
@@ -797,10 +820,10 @@ gui.Bin.prototype.type='bin';
 		gui.rootOrigin._removeChild=function(child){
 			gui.rootContainer._content.innerHTML='';
 			gui.rootContainer._childmap={};
-			gui.rootContainer._prop={select:-1,eB:1,task:gui.rootContainer._prop.task};
 		}
 		gui.rootContainer=new gui.Bin({df:{su:'px'}},gui.rootOrigin);
 		gui.rootContainer._parent=null;
+		gui.rootContainer._prop.id=null;
 		document.body._item=gui.rootContainer;
 		window._item=gui.rootContainer;
 		gui.rootContainer.error=gui.error;
@@ -831,8 +854,8 @@ gui.Bin.prototype.type='bin';
 	function connectToTaskScript(){
 		//	connect gui.action to task.userAction
 		if(task.userAction)gui.action = task.userAction;
-		//	connect task.show to gui.update;
-		task.show=function(data){gui(JSON.parse(JSON.stringify(data)));};
+		//	connect task.display to gui.update;
+		task.display=function(data){gui(JSON.parse(JSON.stringify(data)));};
 		//	define task.end
 		task.end=function(){};
 		//	start task
@@ -890,7 +913,6 @@ gui.Bin.prototype.type='bin';
 		onTaskConnect();
 	}
 	function connectToTaskWS(){
-		logToConsole();
 		if("WebSocket" in window){
 			gui.action = function(time,id,val){
 				ws.send(JSON.stringify([time,id,val]));
@@ -996,11 +1018,15 @@ gui.Item.prototype.P=function(v){
 gui.Item.prototype.O=function(v){
 	var update=v==1?this._onedit:this._prop[v];
 	if(update){
-		if(update.id||update['*']){
-			if(this._processProp)this._processProp(update);
-			else (this._parent||gui.rootOrigin)._processProp(update);
-		}else{
-			(this._parent||gui.rootOrigin)._processChild(this,update);
+		if(update.constructor!==Array)
+			update=[update];
+		for(var i=0;i<update.length;i++){
+			if('id' in update[i] || '_' in update[i] || '*' in update[i]){
+				if(this._processProp)this._processProp(update[i]);
+				else (this._parent||gui.rootOrigin)._processProp(update[i]);
+			}else{
+				(this._parent||gui.rootOrigin)._processChild(this,update[i]);
+			}
 		}
 	}
 }
@@ -1012,7 +1038,7 @@ gui.onEvent=function(e){
 	}
 }
 gui.Item.prototype._onEvent=function(eventType,v){
-	if(v && v.constructor===Object){
+	if(v && typeof(v)==='object'){
 		if(!v.R)this._prop[eventType].R=[eventType];
 		(this===gui.rootContainer?document.body:this._element).addEventListener(eventType.substring(2),gui.onEvent);
 	}else{
@@ -1095,6 +1121,24 @@ gui.Item.prototype._checkOverlap=function(){
 	}
 }
 
+gui.Btn.prototype.keys=function(v){
+	if(v==null || v.length==0){
+		//TODO: remove from btnkeys and remove eventlistern if btnkeys is empty
+	}else{
+		if(Object.entries(gui.btnkeys).length==0)
+			window.addEventListener('keydown',gui.btnkeyCheck);
+		for(var k of v)
+			gui.btnkeys[k]=this;
+	}
+}
+gui.btnkeys={};
+gui.btnkeyCheck=function(e){
+	for(var i in gui.btnkeys){
+		if(e.key==i && gui.btnkeys[i]._prop.in!=0)
+			gui.btnkeys[i]._element.click();
+	}
+}
+
 gui.Btn.prototype.in=function(v){
 	//TODO: unbind and rebind (for the purposes of booldiv)
 	if(v==0||v==false){
@@ -1105,7 +1149,7 @@ gui.Btn.prototype.in=function(v){
 };
 
 gui.Item.prototype.onin=function(v){
-	if(v && v.constructor===Object)this._onedit=v;
+	if(v && typeof(v)==='object')this._onedit=v;
 	else this._onedit=undefined;
 };
 
@@ -1141,7 +1185,7 @@ gui.Bin.prototype._default=function(propName,propVal){
 gui.Bin.prototype.df=function(v){
 	if(v===null){
 		v={};
-		for(var propName in this._defaults)v[propName]=null;
+		for(var propName in this._defaults)this._default(propName,null);
 	}
 	for(var propName in v)this._default(propName,v[propName]);
 }
@@ -1161,39 +1205,39 @@ addCSS(`
 gui.Item.prototype.emp=function(v){this._setAttr('emp',v)};
 gui.Item.prototype.emp2=function(v){this._setAttr('emp2',v)};
 
-gui.Item.prototype.opc=function(v){this._element.style.opacity=v;};
+gui.Item.prototype.opc=function(v){this._frame.style.opacity=v;};
 
 gui.Item.prototype.bg=function(v){
 	if(this._path){
 		this._path.setAttribute('fill',gui.color(this._prop.bg?this._prop.bg:(this._prop.bg===0?0:'none')));
 	}else{
-		this._element.style.background=gui.color(v);
+		this._frame.style.background=gui.color(v);
 	}
 };
 
-gui.Item.prototype.c=function(v){this._element.style.color=gui.color(v);};
+gui.Item.prototype.c=function(v){this._frame.style.color=gui.color(v);};
 
-gui.Item.prototype.fnt=function(v){this._element.style.font=v;};
+gui.Item.prototype.fnt=function(v){this._frame.style.font=v;};
 
 gui.Item.prototype.lc=function(v){
 	if(this._path)
 		this._path.setAttribute('stroke',gui.color(this._prop.lc?this._prop.lc:(this._prop.lc===0?0:1)));
 	else
-		this._element.style.borderColor=gui.color(v);
+		this._frame.style.borderColor=gui.color(v);
 };
 
 gui.Item.prototype.lw=function(v){
 	if(this._path){
 		this._path.style.strokeWidth=this._getSize(v,{'%w':'%','%h':'%'})||0;
 	}else{
-		this._element.style.borderWidth=this._getSize(v,{'%':'%w'});
+		this._frame.style.borderWidth=this._getSize(v,{'%':'%w'});
 	}
 };
 
-// gui.Item.prototype.r=function(v){this._element.style.borderRadius=v+'px';};
+// gui.Item.prototype.r=function(v){this._frame.style.borderRadius=v+'px';};
 addCSS(`
 [shape] {text-align:center;}
-[shape="rect"],[shape="0"] {border-radius:0px  !important} 
+[shape="rect"],[shape="0"] {border-radius:0px  !important}
 [shape="roundedRect"],[shape="2"] {border-radius:.4em  !important}
 [shape="round"],[shape="1"] {border-radius:100%  !important}
 [shape="roundTop"],[shape="6"] {border-radius:100% 100% 0px 0px  !important}
@@ -1208,8 +1252,8 @@ gui.Item.prototype.shape=function(v){
 	//for irregular shapes
 	//	need to remap borderWidth borderColor and background to stroke-width stroke and fill
 	if(v.constructor===Array){
-		this._element.style.background='';
-		this._element.style.borderWidth=0;
+		this._frame.style.background='';
+		this._frame.style.borderWidth=0;
 		if(!this._svg){
 			this._svg=this._element.insertBefore(createSVG('svg'),this._title);
 			this._svg.setAttribute('viewBox','0 0 100 100');
@@ -1220,8 +1264,8 @@ gui.Item.prototype.shape=function(v){
 		}
 		this._path.setAttribute('d',(isNaN(parseInt(v[0]))?'':'M')+v.join(' '));
 	// }else if(v==='triangle'||v===3){
-		// this._element.style.background='';
-		// this._element.style.borderWidth=0;
+		// this._frame.style.background='';
+		// this._frame.style.borderWidth=0;
 		// this._svg=this._element.insertBefore(createSVG('svg'),this._title);
 		// this._svg.setAttribute('viewBox','0 0 100 100');
 		// this._svg.setAttribute('preserveAspectRatio','none');
@@ -1238,20 +1282,20 @@ gui.Item.prototype.shape=function(v){
 	this.lc(this._prop.lc);
 };
 
-gui.Item.prototype.w=function(v,batch){this._element.style.width=this._getSize(v);if(!batch)this._moveHook();};
+gui.Item.prototype.w=function(v,batch){this._frame.style.width=this._getSize(v);if(!batch)this._moveHook();};
 
-gui.Item.prototype.h=function(v,batch){this._element.style.height=this._getSize(v);if(!batch)this._moveHook();};
+gui.Item.prototype.h=function(v,batch){this._frame.style.height=this._getSize(v);if(!batch)this._moveHook();};
 
-gui.Item.prototype.z=function(v){this._element.style.zIndex=10+v;};
+gui.Item.prototype.z=function(v){this._frame.style.zIndex=v;};
 
-gui.Item.prototype.rot=function(v){this._element.style.setProperty('transform','rotate('+v+'deg)');};
+gui.Item.prototype.rot=function(v){this._frame.style.setProperty('transform','rotate('+v+'deg)');};
 
 
 //[childPos] > [v] {margin:0px;overflow:hidden}
 addCSS(`
 [x],[y] {position:absolute;margin:0px}
-[childPos] > [v] {margin:0px;position:absolute;top:0px;left:0px;width:100%;height:100%;overflow:visible}
-`); //TODO: childPos overflow may compete with scroll/scrollH functionality
+[childPos] > [v] {margin:0px;position:absolute;top:0px;left:0px;width:100%;height:100%;overflow:visible;border:solid 1px lightgray}
+`); //TODO: childPos overflow may compete with shiftX|Y functionality
 gui.Bin.prototype._hasPositionedElements=function(){	//enables Item.x and Item.y behavior
 	for(var i of this)
 		if(getComputedStyle(i._element).position==='absolute')
@@ -1259,13 +1303,13 @@ gui.Bin.prototype._hasPositionedElements=function(){	//enables Item.x and Item.y
 	return null;
 }
 gui.Item.prototype.x=function(v,batch){
-	this._element.style.left=this._getSize(v);
+	this._frame.style.left=this._getSize(v);
 	this._setAttr('x',v);
 	this._parent._setAttr('childPos',this._parent._hasPositionedElements());
 	if(!batch)this._moveHook();
 };
 gui.Item.prototype.y=function(v,batch){
-	this._element.style.top=this._getSize(v);
+	this._frame.style.top=this._getSize(v);
 	this._setAttr('y',v);
 	this._parent._setAttr('childPos',this._parent._hasPositionedElements());
 	if(!batch)this._moveHook();
@@ -1281,6 +1325,7 @@ gui.Item.prototype.su=function(v){
 };
 
 gui.Item.prototype._getSize=function(v,convert){
+	if(v===null)return "";
 	var units;
 	if(v===undefined||v===null)v=0;
 	if(v.constructor===String){
@@ -1291,7 +1336,6 @@ gui.Item.prototype._getSize=function(v,convert){
 		units=this._su;
 	}
 	if(convert && (units in convert))units=convert[units];
-	//TODO: add hook so that w/h gets updated when w/h changes
 	if(units==='%w')return (v*this._element.offsetWidth/100)+'px';
 	if(units==='%h')return (v*this._element.offsetHeight/100)+'px';
 	return v+units;
@@ -1303,7 +1347,7 @@ gui.Item.prototype._getSize=function(v,convert){
 //////////////////////////////////////////////////////////////////////////////
 // additional text options
 addCSS(`
-[contenteditable=true] {background-color:white;min-width:100px;padding-left:5px;padding-right:5px;border:solid 1px lightgray;font-family:monospace;pointer-events:all}
+[contenteditable=true] {background-color:white;min-width:100px;max-height:10em;padding-left:5px;padding-right:5px;border:solid 1px lightgray;font-family:monospace;pointer-events:all}
 `);
 gui.Txt.prototype.in=function(v){
 	var c=this._content;
@@ -1406,7 +1450,7 @@ gui.Num.prototype.v=function(v){
 // holddown button
 addCSS(`
 [type='hold']:active {background-color:var(--colorTrue) !important;}
-[type='hold'] {text-align:center;display:inline-block;padding:.4em;color:var(--color1);border:1px solid rgba(0,0,0,0.2);background-color:var(--colorFalse);box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);cursor:pointer;vertical-align:middle;}
+[type='hold'] {text-align:center;display:inline-block;padding:.4em;color:var(--color1);border:1px solid rgba(0,0,0,0.2);background-color:var(--colorFalse);box-shadow: 0 0 5px -1px rgba(0,0,0,0.2);vertical-align:middle;}
 [type='hold']:not(:empty),[select="0"]:not(:empty) {min-width:100px;border-radius:4px;}
 [type='hold'][in]:empty {width:2em;height:2em;border-radius:2em;}
 `)
@@ -1434,7 +1478,7 @@ gui.Hold.prototype.type='hold';
 //////////////////////////////////////////////////////////////////////////////
 // selectable options (checkboxes/radiobuttons)
 addCSS(`
-[type='select'] {display:block;text-align:left}
+[type='select'] {display:block;text-align:left;}
 [type='select']:empty {text-align:center}
 [v="true"] {background-color:var(--colorTrue) !important;}
 [type='select']:not([v="true"]):before {content:"\\2610" " ";display:inline;}
@@ -1524,6 +1568,69 @@ gui.Url.prototype.type='url';
 
 
 //////////////////////////////////////////////////////////////////////////////
+// file
+addCSS(`
+[type='file'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+[type='file'] > [v] > a {margin-left:1em;white-space:normal;color:var(--colorLink);cursor:pointer;text-decoration:underline;font-size:80%}
+`);
+gui.File=class extends gui.Txt{
+	v(v){
+		if(!this._link){
+			this._link=this._content.appendChild(document.createElement("a"));
+			this._link.innerText='Download';
+		}
+		var file=new Blob([v]);
+		this._link.href=URL.createObjectURL(file);
+		this._link.download=this._prop.title||this._prop.id;
+	}
+	//TODO: change this.title to update this._link.download
+}
+gui.File.prototype.type='file';
+gui.File.prototype.filetype=function(v){
+	if(v.toLowerCase()=='csv'){
+		load([
+				'https://cdnjs.cloudflare.com/ajax/libs/dygraph/2.1.0/dygraph.min.js',
+				'https://cdnjs.cloudflare.com/ajax/libs/dygraph/2.1.0/dygraph.css'
+			],()=>{
+				if(!this._previewBtn){
+					this._previewBtn=this._content.appendChild(document.createElement("a"));
+					this._previewBtn.innerText='Preview';
+					this._preview=this._content.appendChild(document.createElement("div"));
+				}
+				var me=this;
+				this._previewBtn.onclick=function(){
+					if(me._graph){
+						delete me._graph;
+						me._content.removeChild(me._preview);
+						me._preview=me._content.appendChild(document.createElement("div"));
+					}else{
+						me._preview.style.backgroundColor='white';
+						me._preview.style.color='black';
+						me._preview.style.margin='1em';
+						me._preview.style.overflow='visible';
+						me._graph=new Dygraph(me._preview,
+							me._prop.v,
+							{
+								legend: 'always',
+								animatedZooms: true,
+								drawPoints: true,
+								title: me._prop.title||me._prop.id||'',
+								connectSeparatedPoints: true
+							});
+					}
+				}
+			});
+	}else if(this._previewBtn){
+		this._content.removeChild(this._previewBtn);
+		delete this._previewBtn;
+		this._content.removeChild(this._preview);
+		delete this._preview;
+	}
+}
+//////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////////////
 // mkdn
 addCSS(`
 [type='mkdn'] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
@@ -1547,8 +1654,8 @@ gui.Mkdn.prototype.eT=function(v){
 //////////////////////////////////////////////////////////////////////////////
 // popup
 addCSS(`
-[type='popup'] {position:absolute;top:0px;left:0px;width:99%;height:99%;background-color:rgba(255,255,255,.5);pointer-events:all}
-[type='popup'] > div {top:50%;left:50%;transform:translate(-50%,-50%);width:50%;border:solid 1px gray;border-radius:4px;background-color:var(--color0);padding:1em}
+[type='popup'] {position:fixed;top:0px;left:0px;width:100vw;height:100vh;z-index:100;background-color:rgba(255,255,255,.5);pointer-events:all}
+[type='popup'] > div {top:50%;left:50%;transform:translate(-50%,-50%);width:50%;max-width:90vw;max-height:90vh;overflow:auto;border:solid 1px gray;border-radius:4px;background-color:var(--color0);padding:1em}
 [type='popup'] > * > .title:empty {width:0px;height:0px;overflow:hidden}
 [type='popup'] > * > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
 `);
@@ -1568,9 +1675,33 @@ gui.Popup.prototype.type='popup';
 
 
 //////////////////////////////////////////////////////////////////////////////
+// toast
+addCSS(`
+[type='toast'] {
+--color1: white;
+--color0: #444444;
+}
+[type='toast'] {max-height:95%;overflow-y:auto;padding-right:1em;position:fixed;bottom:3px;right:3px;z-index:100;pointer-events:all;background-color:var(--color0);color:var(--color1);}
+[type='toast'] [id='closeBtn'] {right:0px;top:0px;position:absolute;cursor:pointer}
+[type='toast'] [id='closeBtn']::before {content:'x';color:#fff;font-weight:300;font-family:Arial,sans-serif;padding:4px}
+`);
+gui.Toast=class extends gui.Bin{
+	_initContent(){
+		super._initContent();
+		this._closeBtn=this._element.appendChild(document.createElement('div'));
+		this._closeBtn.setAttribute('id','closeBtn');
+		var me=this;
+		this._closeBtn.onclick=()=>{me._parent._removeChild(me);};
+	}
+}
+gui.Toast.prototype.type='toast';
+//////////////////////////////////////////////////////////////////////////////
+
+
+//////////////////////////////////////////////////////////////////////////////
 // table
 addCSS(`
-[type="table"] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;}
+[type="table"] > .title:not(empty) {border-bottom:solid 1px var(--colorBorder);width:25%;flex:none}
 [type="table"] {display:flex;flex-direction:column}
 [type="table"] > div {overflow:auto;flex:1 1 auto}
 table {border-spacing:0;border-collapse:collapse;}
@@ -1589,22 +1720,7 @@ gui.Table=class extends gui.Bin{
 	}
 	_newChild(prop){
 		var type=gui.getType(prop);
-		if(!type){
-			var defaultType=gui.getType(this._defaults);
-			if('v' in prop){
-				type=gui.defaultType(prop.v);
-				if(defaultType&&(type.prototype instanceof defaultType))
-					type=defaultType;
-			}else if(defaultType){
-				type=defaultType;
-			}else if('v' in this._defaults){
-				type=gui.defaultType(this._defaults.v);
-			}else{
-				type=gui.Bin;
-				prop.v=[];
-			}
-		}
-		if(type==gui.Bin){
+		if(!type || type==gui.Bin){
 			var child=new gui.TableRow(prop,this);
 			if(typeof(prop.id)!=='number')this._childmap[prop.id]=child;
 		}
@@ -1614,6 +1730,7 @@ gui.Table.prototype.type='table';
 gui.TableRow=class extends gui.Bin{
 	_initContent(){
 		this._element=document.createElement('tr');				//e.v is a sub-element where content is displayed
+		this._frame=this._element;
 		this._title=this._element.appendChild(document.createElement('td'));
 		this._content=this._element;
 		this._parent._placeChildElement(this);
@@ -1646,7 +1763,7 @@ gui.Table.prototype.head=function(v){
 
 //////////////////////////////////////////////////////////////////////////////
 // ln (link between items)
-addCSS(`
+addCSS(` 
 [type="ln"] > [v] > * {margin-bottom:1em;}
 [type="ln"] div:empty {width:0px;height:0px;margin:0px}
 svg {width:100%;height:100%;left:0px;top:0px;position:absolute;z-index:0}
@@ -1738,7 +1855,3 @@ gui.Ln.prototype.dir=function(v){
 	}
 }
 //////////////////////////////////////////////////////////////////////////////
-
-
-
-

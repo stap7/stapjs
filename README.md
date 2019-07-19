@@ -4,7 +4,7 @@ JS library for STAP
         <html><head><script src="https://cdn.jsdelivr.net/gh/stap7/stapjs/stap.min.js"></script><script>
         var task = {
             start: function(){
-                task.show([ "Hello, World!" ]);
+                task.display([ "Hello, World!" ]);
             }
         }
         </script></head><body></body></html>
@@ -32,8 +32,8 @@ or minified
 
 ### use a specific version reference in production (to make sure your code remains stable)
 
-* https://cdn.jsdelivr.net/gh/stap7/stapjs@7.16/stap.js
+* https://cdn.jsdelivr.net/gh/stap7/stapjs@7.17/stap.js
 
 or minified
 
-* https://cdn.jsdelivr.net/gh/stap7/stapjs@7.16/stap.min.js
+* https://cdn.jsdelivr.net/gh/stap7/stapjs@7.17/stap.min.js
